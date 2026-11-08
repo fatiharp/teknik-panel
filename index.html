@@ -15,8 +15,8 @@
 </head>
 <body>
 <div class="kart">
-  <h1>Teknik Panel — Aşama 0 denemesi</h1>
-  <p>Bu sayfa açılıyorsa GitHub Pages çalışıyor demektir. ✅</p>
+  <h1>Teknik Panel</h1>
+  <p>Yer imini bir kez ekle. Sonraki güncellemeler kendiliğinden gelir, yer imini değiştirmen gerekmez.</p>
 </div>
 
 <div class="kart">
@@ -39,7 +39,7 @@
 <script>
   var kok = location.href.replace(/[#?].*$/, "").replace(/[^\/]*$/, "");
   var kod = "javascript:(function(){var s=document.createElement('script');" +
-    "s.src='" + kok + "deneme.js?t='+Date.now();" +
+    "s.src='" + kok + "panel.js?t='+Date.now();" +
     "s.onerror=function(){alert('Teknik Panel yüklenemedi: Bu sayfa dışarıdan betik yüklemeye izin vermiyor olabilir.')};" +
     "(document.head||document.documentElement).appendChild(s)})();";
   document.getElementById("yerimi").href = kod;
