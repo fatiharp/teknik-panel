@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teknik Panel</title>
+<style>
+  body { font: 16px/1.5 Arial, sans-serif; margin: 0; padding: 16px; background: #f4f6fa; color: #222; }
+  .kart { background: #fff; border-radius: 10px; padding: 16px; max-width: 640px; margin: 0 auto 16px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  h1 { color: #1F3864; font-size: 22px; margin: 0 0 8px; }
+  textarea { width: 100%; box-sizing: border-box; height: 110px; font: 13px monospace; padding: 8px; }
+  button, .yerimi { display: inline-block; padding: 12px 16px; font-size: 16px; border-radius: 8px; border: 0; background: #2E7D32; color: #fff; text-decoration: none; margin-top: 8px; }
+  ol { padding-left: 20px; }
+</style>
+</head>
+<body>
+<div class="kart">
+  <h1>Teknik Panel — Aşama 0 denemesi</h1>
+  <p>Bu sayfa açılıyorsa GitHub Pages çalışıyor demektir. ✅</p>
+</div>
+
+<div class="kart">
+  <b>Bilgisayar (Chrome):</b>
+  <p>Aşağıdaki yeşil düğmeyi fareyle tutup yukarıdaki yer imleri çubuğuna sürükle.</p>
+  <a class="yerimi" id="yerimi" href="#">TEKNİK PANEL</a>
+</div>
+
+<div class="kart">
+  <b>iPhone (Safari) ya da elle ekleme:</b>
+  <ol>
+    <li>Aşağıdaki "Kodu kopyala" düğmesine bas.</li>
+    <li>Safari'de bu sayfayı yer imlerine ekle (Paylaş simgesi ⬆️ → "Yer İşareti Ekle"), adını <b>TEKNİK PANEL</b> yap, Kaydet.</li>
+    <li>Yer İşaretleri 📖 → "Düzenle" → TEKNİK PANEL'e dokun → adres kısmını tamamen sil → kopyaladığın kodu yapıştır → Bitti.</li>
+  </ol>
+  <textarea id="kod" readonly></textarea>
+  <button id="kopyala">Kodu kopyala</button>
+</div>
+
+<script>
+  var kok = location.href.replace(/[#?].*$/, "").replace(/[^\/]*$/, "");
+  var kod = "javascript:(function(){var s=document.createElement('script');" +
+    "s.src='" + kok + "deneme.js?t='+Date.now();" +
+    "s.onerror=function(){alert('Teknik Panel yüklenemedi: Bu sayfa dışarıdan betik yüklemeye izin vermiyor olabilir.')};" +
+    "(document.head||document.documentElement).appendChild(s)})();";
+  document.getElementById("yerimi").href = kod;
+  document.getElementById("kod").value = kod;
+  document.getElementById("kopyala").onclick = function () {
+    var t = document.getElementById("kod");
+    t.select();
+    try { navigator.clipboard.writeText(kod); } catch (e) { document.execCommand("copy"); }
+    this.textContent = "Kopyalandı ✓";
+  };
+</script>
+</body>
+</html>
