@@ -276,25 +276,123 @@ calistir();
 
   };
 
+  /* ===== TOPLU KALEM EKLE (mevcut/toplu_kalem.js, birebir) ===== */
+  window.__tpTopluKalem = function () {
+(function(){
+if(top.__TK){alert('Toplu Kalem paneli zaten açık.');return;}
+function findWin(w,key){
+  try{ if(w.location.href.indexOf(key)>-1) return w; }catch(e){ return null; }
+  for(var i=0;i<w.frames.length;i++){ var r=findWin(w.frames[i],key); if(r) return r; }
+  return null;
+}
+var M=findWin(top,'PCA00_V5_SCR');
+if(!M){ alert('Önce Minerva\'da Satınalma Talebi belgesini açın.'); return; }
+top.__TK=1;
+var D=top.document;
+function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+async function waitFor(fn,ms){
+  var t=Date.now();
+  while(Date.now()-t<ms){ try{ var v=fn(); if(v) return v; }catch(e){} await sleep(250); }
+  return null;
+}
+function P(){ return findWin(top,'PCA03_V5_SCR'); }
+function el(w,n){ return w.document.getElementsByName(n)[0]; }
+
+var box=D.createElement('div');
+box.style.cssText='position:fixed;top:60px;right:20px;width:380px;z-index:999999;background:#fff;border:2px solid #072a5c;border-radius:8px;padding:12px;font:13px Arial;box-shadow:0 4px 16px rgba(0,0,0,.3);color:#222;';
+box.innerHTML='<div style="font-weight:bold;font-size:15px;color:#072a5c;margin-bottom:6px;">TOPLU KALEM EKLE</div>'+
+ '<div style="margin-bottom:4px;">Excel\'den <b>Ürün Kodu</b> ve <b>Miktar</b> sütunlarını kopyalayıp buraya yapıştırın:</div>'+
+ '<textarea id="tk_ta" style="width:100%;height:150px;font:12px monospace;box-sizing:border-box;" placeholder="0501009&#9;4\n0505023&#9;4,8"></textarea>'+
+ '<label style="display:block;margin:6px 0;"><input type="checkbox" id="tk_chk" checked> Her kalemi kaydetmeden önce bana sor</label>'+
+ '<button id="tk_go" style="background:#2e7d32;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;">Başlat</button> '+
+ '<button id="tk_x" style="padding:6px 14px;border-radius:4px;cursor:pointer;">Kapat</button>'+
+ '<div id="tk_log" style="margin-top:8px;max-height:200px;overflow:auto;font:12px monospace;background:#f4f7fb;padding:6px;"></div>';
+D.body.appendChild(box);
+var ta=D.getElementById('tk_ta'), chk=D.getElementById('tk_chk'), lg=D.getElementById('tk_log');
+function log(s){ var d=D.createElement('div'); d.textContent=s; lg.appendChild(d); lg.scrollTop=99999; }
+D.getElementById('tk_x').onclick=function(){ box.remove(); top.__TK=0; };
+
+D.getElementById('tk_go').onclick=async function(){
+  var btn=this; btn.disabled=true;
+  var items=[];
+  ta.value.split(/\r?\n/).forEach(function(l){
+    l=l.trim(); if(!l) return;
+    var p=l.split(/\t|;|\s{2,}/).map(function(s){return s.trim();}).filter(Boolean);
+    if(p.length<2) p=l.split(/\s+/);
+    var kod=p[0], mik=(p[p.length-1]||'').replace(',','.');
+    if(p.length<2 || !/^[0-9]+(\.[0-9]+)?$/.test(mik)){ log('ATLANDI (miktar okunamadı): '+l); return; }
+    items.push({kod:kod,mik:mik});
+  });
+  if(!items.length){ log('Liste boş.'); btn.disabled=false; return; }
+  var w0=P();
+  if(w0 && el(w0,'p_ITEM_CODE') && el(w0,'p_ITEM_CODE').value!==''){
+    alert('Açık bir "Yeni Madde" penceresi var ve içi dolu. Lütfen önce onu kaydedin ya da kapatın.');
+    btn.disabled=false; return;
+  }
+  log(items.length+' kalem okundu. Başlıyor...');
+  var ok=0, hata=[];
+  for(var i=0;i<items.length;i++){
+    var it=items[i];
+    if(!P()){ try{ M.yenimadde(); }catch(e){ log('Yeni Madde açılamadı: '+e.message); break; } }
+    var w=await waitFor(function(){ var x=P(); var c=x&&el(x,'p_ITEM_CODE'); return x&&x.document.readyState==='complete'&&c&&c.value===''&&x; },20000);
+    if(!w){ log('Yeni Madde penceresi hazır olmadı. Durduruldu.'); break; }
+    el(w,'p_ITEM_CODE').value=it.kod;
+    w.BulFunc=0;
+    try{ w.item_chg('KODU','\x25'); }catch(e){ log('Kod sorgulanamadı: '+e.message); break; }
+    var nm=await waitFor(function(){ var x=P(); var n=x&&el(x,'p_ITEM_NAME'); return n&&n.value.trim(); },10000);
+    w=P();
+    if(!nm){
+      hata.push(it.kod);
+      log('✗ '+it.kod+' BULUNAMADI, atlandı');
+      if(w){ el(w,'p_ITEM_CODE').value=''; var n2=el(w,'p_ITEM_NAME'); if(n2) n2.value=''; }
+      continue;
+    }
+    var q=el(w,'p_QTY'); q.value=it.mik;
+    try{ w.calcul('QTY'); }catch(e){}
+    var qa=el(w,'p_QTY_APP'); if(qa && (!qa.value || parseFloat(qa.value)==0)) qa.value=it.mik;
+    if(chk.checked && !confirm((i+1)+' / '+items.length+'\n\n'+it.kod+'  -  '+nm+'\nMiktar: '+it.mik+'\n\nBu kalem kaydedilsin mi?')){
+      log('Siz durdurdunuz. '+it.kod+' kaydedilmedi, pencerede bekliyor.');
+      break;
+    }
+    var son=(i===items.length-1);
+    w.saverec(son?'S+C':'S+N');
+    var kaydedildi=await waitFor(function(){ var x=P(); if(!x) return true; var c=el(x,'p_ITEM_CODE'); return c&&c.value===''; },30000);
+    if(!kaydedildi){ log('✗ '+it.kod+' kaydı doğrulanamadı. Durduruldu, ekranı kontrol edin.'); break; }
+    ok++;
+    log('✓ '+it.kod+'  '+nm+'  : '+it.mik);
+    await sleep(800);
+  }
+  log('BİTTİ — '+ok+' kalem eklendi.'+(hata.length?' Bulunamayan kodlar: '+hata.join(', '):''));
+  btn.disabled=false;
+};
+})();
+
+  };
+
   /* Minerva menüsü her açıldığında (ilk açılış ve "Geri" dönüşleri) ek düğmeleri koy. */
+  function dugme(id, renk, baslik, aciklama, calis, m) {
+    var b = document.createElement("button");
+    b.id = id;
+    b.style.cssText = "display:block;width:100%;margin-top:10px;padding:11px 12px;border:0;border-radius:6px;background:" + renk + ";color:#fff;font:bold 16px Calibri,Arial,sans-serif;cursor:pointer;text-align:left";
+    b.innerHTML = baslik + '<div style="font-weight:normal;font-size:12.5px;opacity:.9">' + aciklama + "</div>";
+    b.onclick = function () { m.remove(); calis(); };
+    return b;
+  }
   function menuyeEkle() {
     var m = document.getElementById("__mnvMenu");
     if (!m || document.getElementById("__tpSatBtn")) return;
     var kapat = document.getElementById("__mnvKapat");
     var yer = kapat ? kapat.parentNode : null;
-    var b = document.createElement("button");
-    b.id = "__tpSatBtn";
-    b.style.cssText = "display:block;width:100%;margin-top:10px;padding:11px 12px;border:0;border-radius:6px;background:#B26A00;color:#fff;font:bold 16px Calibri,Arial,sans-serif;cursor:pointer;text-align:left";
-    b.innerHTML = '🧾 Satınalma Excel<div style="font-weight:normal;font-size:12.5px;opacity:.9">Firma bazlı aylık satınalma talebi Excel\'leri</div>';
-    b.onclick = function () { m.remove(); window.__tpSatinalma(); };
+    var b = dugme("__tpSatBtn", "#B26A00", "🧾 Satınalma Excel", "Firma bazlı aylık satınalma talebi Excel'leri", function () { window.__tpSatinalma(); }, m);
+    var tk = dugme("__tpTkBtn", "#072A5C", "📦 Toplu Kalem Ekle", "Açık satınalma talebine Excel'den kalemleri toplu gir", function () { window.__tpTopluKalem(); }, m);
     var ay = document.createElement("a");
     ay.href = "#";
     ay.id = "__tpAyarLink";
     ay.textContent = "⚙ Ayarlar";
     ay.style.cssText = "color:#1F4E78;float:left";
     ay.onclick = function () { m.remove(); ayarKutusu("Ayarları buradan değiştirebilirsin. Değiştirdikten sonra Kaydet'e bas."); return false; };
-    if (yer) { m.insertBefore(b, yer); yer.insertBefore(ay, yer.firstChild); }
-    else m.appendChild(b);
+    if (yer) { m.insertBefore(b, yer); m.insertBefore(tk, yer); yer.insertBefore(ay, yer.firstChild); }
+    else { m.appendChild(b); m.appendChild(tk); }
   }
   try {
     new MutationObserver(menuyeEkle).observe(document.body, { childList: true });
