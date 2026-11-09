@@ -594,61 +594,55 @@ function cirakFormu(iz, p) {
   w.document.open(); w.document.write(html); w.document.close();
 }
 
-function bogaziciFormu(iz, p) {
+async function bogaziciFormu(iz, p) {
   const b = bakiyeOku(p.id, iz.yil);
   const once = b.onc + kullanilan(p.id, iz.yil, iz.id, iz.baslangic);
   const bu = iz.tur === "YILLIK İZİN" ? iz.gun : 0;
   const toplam = b.dev + b.hak, kalan = toplam - once - bu;
   const gunAdi = s => s ? "(" + GUNLER[tarihNesne(s).getDay()] + ")" : "";
   const imzaAdi = (V.ayarlar.izinAmiri && V.ayarlar.izinAmiri.trim()) || "Celal ARAL";
-  const turler = [["YILLIK İZİN", "ÖLÜM İZNİ"], ["ÜCRETSİZ İZİN", "EVLİLİK İZNİ"], ["FAZLA MESAİ İZNİ", "BABALIK İZNİ"], ["DİĞER İZİN / İDARİ İZİN", "MAZERET İZNİ"]];
-  const kt = t => '<span class="kt">' + (t === iz.tur ? "X" : "") + "</span> " + t;
-  const logo = n => new URL("formlar/" + n, location.href).href;
-  const satir = (e1, v1, e2, v2) => '<tr><td class="e" style="width:26%">' + e1 + '</td><td class="v" style="width:34%">' + esc(v1) + '</td><td class="e" style="width:26%">' + e2 + '</td><td class="v ort">' + esc(v2) + '</td></tr>';
-  const tek = (e1, v1) => '<tr><td class="e" style="width:26%">' + e1 + '</td><td class="v" colspan="3">' + esc(v1) + '</td></tr>';
-  const html = '<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>' + esc(izinDosyaAdi(iz, p)) + '</title><style>' +
-    '@page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;font:12px/1.35 Arial,sans-serif;color:#000}' +
-    '.arac{text-align:center;padding:8px}.arac button{font:14px Arial;padding:7px 16px;cursor:pointer}@media print{.arac{display:none}}' +
-    'table{width:100%;border-collapse:collapse}td{border:1px solid #000;padding:3px 5px;vertical-align:middle}' +
-    '.baslik td{border:0;text-align:center}.e{background:#eee;font-weight:bold;white-space:nowrap;font-size:11px}' +
-    '.v{font-weight:bold}.ort{text-align:center}.kt{display:inline-block;width:15px;height:15px;border:1px solid #000;text-align:center;line-height:15px;font-weight:bold;margin-right:5px}' +
-    '.imza{height:72px;vertical-align:top;font-size:11px;font-weight:bold}.not{font-size:11px;margin:6px 0}' +
-    '</style></head><body>' +
-    '<div class="arac"><button onclick="print()">🖨 Yazdır / PDF kaydet</button></div>' +
-    '<table><tr class="baslik"><td style="width:80px"><img src="' + logo("bogazici-logo1.jpeg") + '" style="height:66px"></td>' +
-    '<td><div>T.C.</div><div style="font-size:15px;font-weight:bold">İSTANBUL BÜYÜKŞEHİR BELEDİYESİ</div><div style="font-weight:bold">TESİSLER BAKIM VE ONARIM MÜDÜRLÜĞÜ</div><div style="font-size:14px;font-weight:bold;margin-top:3px">PERSONEL İZİN FORMU</div></td>' +
-    '<td style="width:120px"><img src="' + logo("bogazici-logo2.jpeg") + '" style="max-width:112px;max-height:66px"></td></tr></table>' +
-    '<table style="margin-top:4px"><tr><td class="ort" style="font-weight:bold;background:#e8e8e8">İZNE ÇIKACAK PERSONELİN ÇALIŞTIĞI BÖLÜMDE DOLDURULACAKTIR</td></tr></table>' +
-    '<table>' +
-    satir("ADI SOYADI", p.ad, "SİCİL NO", p.sicil) +
-    tek("T.C. KİMLİK NUMARASI", p.tc) +
-    tek("ÇALIŞTIĞI MÜDÜRLÜK ADI", p.mudurluk) +
-    tek("ÇALIŞTIĞI BİNA ADI", p.bina) +
-    tek("GÖREVİ", (p.kadro || "") + (p.gorev ? " (" + p.gorev + ")" : "")) +
-    tek("İZİNDE BULUNACAĞI ADRES", iz.adres || p.adres) +
-    tek("TELEFON NUMARASI", p.telefon) +
-    satir("İZİNE ÇIKACAĞI TARİH", goster(iz.baslangic), "KAÇ İŞ GÜNÜ İZİN KULLANACAĞI", sayi(iz.gun)) +
-    tek("İZİN YILI", iz.yil) +
-    '</table>' +
-    '<table style="margin-top:4px"><tr><td class="e ort" colspan="2">İZİN TÜRÜ</td></tr>' +
-    turler.map(r => '<tr><td style="width:50%">' + kt(r[0]) + '</td><td>' + kt(r[1]) + '</td></tr>').join("") + '</table>' +
-    '<table style="margin-top:4px"><tr><td class="e" style="width:55%">TALEBİ UYGUN İZİN KULLANMAK İSTİYORUM</td><td class="e ort">PERSONELİN ADI SOYADI İMZASI</td></tr>' +
-    '<tr><td style="height:46px"></td><td class="ort v" style="vertical-align:bottom">' + esc(p.ad) + '</td></tr></table>' +
-    '<table style="margin-top:4px">' +
-    tek("İŞE GİRİŞ TARİHİ", goster(p.iseGiris)) +
-    '<tr><td class="e">TOPLAM İZİN GÜNÜ</td><td class="ort v">' + sayi(toplam) + '</td><td class="e">KULLANILAN İZİN GÜNÜ</td><td class="ort v">' + sayi(bu) + '</td></tr>' +
-    '<tr><td class="e">KULLANILAN İLK İZİN GÜNÜ</td><td class="ort v">' + sayi(once) + '</td><td class="e">KALAN İZİN GÜNÜ</td><td class="ort v">' + sayi(kalan) + '</td></tr>' +
-    '<tr><td class="e">İZİN BAŞLAMA TARİHİ</td><td class="ort v">' + goster(iz.baslangic) + " " + gunAdi(iz.baslangic) + '</td><td class="e">İŞ BAŞI TARİHİ</td><td class="ort v">' + goster(iz.isBasi) + " " + gunAdi(iz.isBasi) + '</td></tr>' +
-    '</table>' +
-    '<div class="not">BELİRTİLEN TARİHLERDE İZİN KULLANMASI UYGUNDUR……</div>' +
-    '<table><tr><td class="e ort">AMİR / ŞEF / SORUMLU</td><td class="e ort">MÜDÜR YARD.</td><td class="e ort">MÜDÜR</td><td class="e ort">İNSAN KAYNAKLARI</td></tr>' +
-    '<tr><td class="imza">Avrupa Yakası Bakım Şefliği<br>Birim Sorumlusu<br>' + esc(imzaAdi) + '</td><td class="imza"></td><td class="imza"></td><td class="imza"></td></tr></table>' +
-    '<scr' + 'ipt>setTimeout(function(){print()},500)</scr' + 'ipt></body></html>';
-  const w = window.open("", "_blank", "width=900,height=1000");
-  if (!w) { bildir("Form penceresi açılamadı. Açılır pencere engelini kaldır.", true); return; }
-  w.document.open(); w.document.write(html); w.document.close();
+  const isaret = FORM_ISARET[iz.tur] || "C21";
+  const STIL = { D8: 353, K8: 445, D9: 348, D10: 348, D11: 348, D12: 348, D13: 348, D14: 379, D15: 376, L15: 449, D16: 365, C18: 102, C19: 104, C20: 104, C21: 106, H18: 104, H19: 104, H20: 104, H21: 108, H23: 473, D25: 307, D26: 322, F26: 322, I26: 46, L26: 480, D27: 301, F27: 302, D28: 303, F28: 305, C32: 486 };
+  const deger = {
+    D8: p.ad, K8: p.sicil, D9: p.tc, D10: p.mudurluk, D11: p.bina,
+    D12: (p.kadro || "") + (p.gorev ? " (" + p.gorev + ")" : ""), D13: iz.adres || p.adres, D14: p.telefon,
+    D15: goster(iz.baslangic), L15: sayi(iz.gun), D16: String(iz.yil),
+    H23: p.ad, D25: goster(p.iseGiris),
+    D26: sayi(toplam), F26: sayi(bu), I26: sayi(once), L26: sayi(kalan),
+    D27: goster(iz.baslangic), F27: gunAdi(iz.baslangic), D28: goster(iz.isBasi), F28: gunAdi(iz.isBasi),
+    C32: "Avrupa Yakası Bakım Şefliği\nBirim Sorumlusu\n" + imzaAdi
+  };
+  deger[isaret] = "X";
+  if (typeof JSZip === "undefined") { bildir("Excel aracı yüklenemedi (internet gerekebilir).", true); return; }
+  bildir("İzin formu (Excel) hazırlanıyor…");
+  try {
+    const ab = await (await fetch("sablonlar/izin_formu.xlsx", { cache: "force-cache" })).arrayBuffer();
+    const zip = await JSZip.loadAsync(ab);
+    const yolXml = "xl/worksheets/sheet1.xml";
+    let xml = await zip.file(yolXml).async("string");
+    const xmlEsc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    Object.keys(deger).forEach(ref => {
+      const st = STIL[ref]; if (st == null) return;
+      const metin = xmlEsc(deger[ref]).replace(/\r?\n/g, "&#10;");
+      const yeniHucre = '<c r="' + ref + '" s="' + st + '" t="inlineStr"><is><t xml:space="preserve">' + metin + '</t></is></c>';
+      const re = new RegExp('<c r="' + ref + '"[^>]*?/>|<c r="' + ref + '"[^>]*?>[\\s\\S]*?</c>');
+      xml = xml.replace(re, yeniHucre);
+    });
+    zip.file(yolXml, xml);
+    const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE" });
+    const dad = dosyaAdi(izinDosyaAdi(iz, p)) + ".xlsx";
+    const hedef = izinKlasoru(iz, p) + "\\" + dad;
+    const r = await DK.dosyaYazResp(hedef, blob);
+    const c = await r.json();
+    if (!r.ok) throw new Error(c.hata || "kaydedilemedi");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = dad;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (!(iz.belgeler || []).some(x => x.yol === hedef)) { iz.belgeler = (iz.belgeler || []).concat([{ tur: "Excel form", yol: hedef, tarih: bugun() }]); await kaydet("izinler"); }
+    bildir("İzin formu kişinin İZİN klasörüne kaydedildi ve indirildi.");
+  } catch (e) { bildir("İzin formu hazırlanamadı: " + e.message, true); }
 }
-
 async function izinFormu(id) {
   const iz = V.izinler.find(i => i.id === id), p = iz && personelBul(iz.personelId);
   if (!iz || !p) { bildir("İzin ya da personel bulunamadı.", true); return; }
