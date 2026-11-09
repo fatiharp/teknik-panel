@@ -555,22 +555,98 @@ function iyelikEki(ad) {
   const u = { a: "ı", ı: "ı", e: "i", i: "i", o: "u", u: "u", ö: "ü", ü: "ü" }[son];
   return "’" + (unluyleBiter ? "n" : "") + u + "n";
 }
-async function cirakFormu(iz, p) {
+function cirakFormu(iz, p) {
   const yillik = iz.tur === "YILLIK İZİN", kucuk = trKucuk(iz.tur);
   const yonelme = yillik ? "yıllık izne" : /izni$/.test(kucuk) ? kucuk + "ne" : kucuk.replace(/izin$/, "izne");
-  const degerler = {
+  const d = {
     SICIL: p.sicil || "", AD: adYazimi(p.ad), ADIN: adYazimi(p.ad) + iyelikEki(p.ad), BABA: p.babaAdi || "", DOGUM: p.dogumYeriYili || "", UNVAN: (p.gorev ? adYazimi(p.gorev).trim() + " " : "") + "(Çırak)",
     OGRENIM: p.ogrenim || "", GIRIS: goster(p.iseGiris), BAS: goster(iz.baslangic), GUN: sayi(iz.gun), TUR: kucuk, TURE: yonelme,
     MAHSUBEN: yillik ? iz.yil + " yılı senelik iznime mahsuben " : "", AIT: yillik ? iz.yil + " yılına ait " : "",
     TC: p.tc || "", TEL: p.telefon || "", YER: iz.adres || "", YERINE: iz.yerineBakacak ? adYazimi(iz.yerineBakacak) : "", DONUS: goster(iz.isBasi)
   };
-  const hedef = izinKlasoru(iz, p) + "\\" + dosyaAdi(izinDosyaAdi(iz, p)) + " - ÇIRAK İZİN KAĞIDI.doc";
-  bildir("Çırak izin kâğıdı hazırlanıyor… (Word birkaç saniye sürebilir)");
-  try {
-    const c = await api("/api/word", { sablon: "cirak_izin_kagidi.doc", hedef, degerler, ac: true });
-    bildir("Çırak izin kâğıdı açıldı.");
-    if (!(iz.belgeler || []).some(b => b.yol === c.dosya)) { iz.belgeler = (iz.belgeler || []).concat([{ tur: "Word form", yol: c.dosya, tarih: bugun() }]); await kaydet("izinler"); }
-  } catch (e) { bildir("Çırak izin kâğıdı hazırlanamadı: " + e.message, true); }
+  const sat = (e, v) => '<tr><td class="e">' + e + '</td><td>:&nbsp;' + esc(v) + '</td></tr>';
+  const html = '<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>' + esc(izinDosyaAdi(iz, p)) + ' - ÇIRAK İZİN KAĞIDI</title><style>' +
+    '@page{size:A4;margin:18mm}body{margin:0;font:13px/1.5 Arial,sans-serif;color:#000}' +
+    '.arac{text-align:center;padding:8px}.arac button{font:14px Arial;padding:7px 16px;cursor:pointer}@media print{.arac{display:none}}' +
+    '.sayfa2{page-break-before:always}' +
+    'table.bilgi{border-collapse:collapse;margin:0 0 10px}table.bilgi td{padding:2px 4px;vertical-align:top}.e{font-weight:bold;white-space:nowrap}' +
+    'h3{text-align:center;margin:18px 0 14px;letter-spacing:1px}.govde{margin:14px 0;text-align:justify}' +
+    '.imzalar{margin-top:70px;display:flex;justify-content:space-around;text-align:center}.imzalar b{display:block;margin-bottom:2px}' +
+    '.sag{margin-top:46px;text-align:right}' +
+    '</style></head><body>' +
+    '<div class="arac"><button onclick="print()">🖨 Yazdır / PDF kaydet</button></div>' +
+    '<div>' +
+    '<table class="bilgi">' + sat("Sicil Numarası", d.SICIL) + sat("Adı Soyadı", d.AD) + sat("Baba Adı", d.BABA) + sat("Doğum Yeri / Yılı", d.DOGUM) + sat("Unvanı", d.UNVAN) + sat("Öğrenim Durumu", d.OGRENIM) + sat("İşe Giriş Tarihi", d.GIRIS) + '</table>' +
+    '<h3>İŞLETMELER MÜDÜRLÜĞÜNE</h3>' +
+    '<div class="govde">' + esc(d.BAS) + ' tarihinden itibaren ' + esc(d.MAHSUBEN) + esc(d.GUN) + ' gün ' + esc(d.TUR) + ' kullanmak istiyorum.</div>' +
+    '<div class="govde">Bilgilerinizi ve gereğini arz ederim.</div>' +
+    '<div class="sag">İmza<br><br><b>' + esc(d.AD) + '</b></div>' +
+    '</div>' +
+    '<div class="sayfa2">' +
+    '<h3>MÜTALAA KÂĞIDI</h3>' +
+    '<div class="govde">Florya Sosyal Tesisi Çırak personelimizden ' + esc(d.TC) + ' T.C. Kimlik numaralı ' + esc(d.ADIN) + ' ' + esc(d.BAS) + ' tarihinden itibaren ' + esc(d.AIT) + esc(d.GUN) + ' gün ' + esc(d.TURE) + ' çıkması tarafımızca uygun görülmüştür.</div>' +
+    '<table class="bilgi" style="margin-top:20px">' + sat("Birimi", "Florya Sosyal Tesisi") + sat("Dahili Numarası", "3400") + sat("İletişim Bilgisi (Telefon)", d.TEL) + sat("İznini Geçireceği Yer", d.YER) + sat("Yerine Bakacak Personel", d.YERINE) + sat("İzinden Dönüş Tarihi", d.DONUS) + '</table>' +
+    '<div class="imzalar"><div><br><br><b>Ömer ÇALIŞAN</b>Tesis Amiri</div><div><br><br><b>Yalçın ŞAHİN</b>İşletmeler Müdür Yardımcısı</div></div>' +
+    '</div>' +
+    '<scr' + 'ipt>setTimeout(function(){print()},500)</scr' + 'ipt></body></html>';
+  const w = window.open("", "_blank", "width=900,height=1000");
+  if (!w) { bildir("Form penceresi açılamadı. Açılır pencere engelini kaldır.", true); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+function bogaziciFormu(iz, p) {
+  const b = bakiyeOku(p.id, iz.yil);
+  const once = b.onc + kullanilan(p.id, iz.yil, iz.id, iz.baslangic);
+  const bu = iz.tur === "YILLIK İZİN" ? iz.gun : 0;
+  const toplam = b.dev + b.hak, kalan = toplam - once - bu;
+  const gunAdi = s => s ? "(" + GUNLER[tarihNesne(s).getDay()] + ")" : "";
+  const imzaAdi = (V.ayarlar.izinAmiri && V.ayarlar.izinAmiri.trim()) || "Celal ARAL";
+  const turler = [["YILLIK İZİN", "ÖLÜM İZNİ"], ["ÜCRETSİZ İZİN", "EVLİLİK İZNİ"], ["FAZLA MESAİ İZNİ", "BABALIK İZNİ"], ["DİĞER İZİN / İDARİ İZİN", "MAZERET İZNİ"]];
+  const kt = t => '<span class="kt">' + (t === iz.tur ? "X" : "") + "</span> " + t;
+  const logo = n => new URL("formlar/" + n, location.href).href;
+  const satir = (e1, v1, e2, v2) => '<tr><td class="e" style="width:26%">' + e1 + '</td><td class="v" style="width:34%">' + esc(v1) + '</td><td class="e" style="width:26%">' + e2 + '</td><td class="v ort">' + esc(v2) + '</td></tr>';
+  const tek = (e1, v1) => '<tr><td class="e" style="width:26%">' + e1 + '</td><td class="v" colspan="3">' + esc(v1) + '</td></tr>';
+  const html = '<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>' + esc(izinDosyaAdi(iz, p)) + '</title><style>' +
+    '@page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;font:12px/1.35 Arial,sans-serif;color:#000}' +
+    '.arac{text-align:center;padding:8px}.arac button{font:14px Arial;padding:7px 16px;cursor:pointer}@media print{.arac{display:none}}' +
+    'table{width:100%;border-collapse:collapse}td{border:1px solid #000;padding:3px 5px;vertical-align:middle}' +
+    '.baslik td{border:0;text-align:center}.e{background:#eee;font-weight:bold;white-space:nowrap;font-size:11px}' +
+    '.v{font-weight:bold}.ort{text-align:center}.kt{display:inline-block;width:15px;height:15px;border:1px solid #000;text-align:center;line-height:15px;font-weight:bold;margin-right:5px}' +
+    '.imza{height:72px;vertical-align:top;font-size:11px;font-weight:bold}.not{font-size:11px;margin:6px 0}' +
+    '</style></head><body>' +
+    '<div class="arac"><button onclick="print()">🖨 Yazdır / PDF kaydet</button></div>' +
+    '<table><tr class="baslik"><td style="width:80px"><img src="' + logo("bogazici-logo1.jpeg") + '" style="height:66px"></td>' +
+    '<td><div>T.C.</div><div style="font-size:15px;font-weight:bold">İSTANBUL BÜYÜKŞEHİR BELEDİYESİ</div><div style="font-weight:bold">TESİSLER BAKIM VE ONARIM MÜDÜRLÜĞÜ</div><div style="font-size:14px;font-weight:bold;margin-top:3px">PERSONEL İZİN FORMU</div></td>' +
+    '<td style="width:120px"><img src="' + logo("bogazici-logo2.jpeg") + '" style="max-width:112px;max-height:66px"></td></tr></table>' +
+    '<table style="margin-top:4px"><tr><td class="ort" style="font-weight:bold;background:#e8e8e8">İZNE ÇIKACAK PERSONELİN ÇALIŞTIĞI BÖLÜMDE DOLDURULACAKTIR</td></tr></table>' +
+    '<table>' +
+    satir("ADI SOYADI", p.ad, "SİCİL NO", p.sicil) +
+    tek("T.C. KİMLİK NUMARASI", p.tc) +
+    tek("ÇALIŞTIĞI MÜDÜRLÜK ADI", p.mudurluk) +
+    tek("ÇALIŞTIĞI BİNA ADI", p.bina) +
+    tek("GÖREVİ", (p.kadro || "") + (p.gorev ? " (" + p.gorev + ")" : "")) +
+    tek("İZİNDE BULUNACAĞI ADRES", iz.adres || p.adres) +
+    tek("TELEFON NUMARASI", p.telefon) +
+    satir("İZİNE ÇIKACAĞI TARİH", goster(iz.baslangic), "KAÇ İŞ GÜNÜ İZİN KULLANACAĞI", sayi(iz.gun)) +
+    tek("İZİN YILI", iz.yil) +
+    '</table>' +
+    '<table style="margin-top:4px"><tr><td class="e ort" colspan="2">İZİN TÜRÜ</td></tr>' +
+    turler.map(r => '<tr><td style="width:50%">' + kt(r[0]) + '</td><td>' + kt(r[1]) + '</td></tr>').join("") + '</table>' +
+    '<table style="margin-top:4px"><tr><td class="e" style="width:55%">TALEBİ UYGUN İZİN KULLANMAK İSTİYORUM</td><td class="e ort">PERSONELİN ADI SOYADI İMZASI</td></tr>' +
+    '<tr><td style="height:46px"></td><td class="ort v" style="vertical-align:bottom">' + esc(p.ad) + '</td></tr></table>' +
+    '<table style="margin-top:4px">' +
+    tek("İŞE GİRİŞ TARİHİ", goster(p.iseGiris)) +
+    '<tr><td class="e">TOPLAM İZİN GÜNÜ</td><td class="ort v">' + sayi(toplam) + '</td><td class="e">KULLANILAN İZİN GÜNÜ</td><td class="ort v">' + sayi(bu) + '</td></tr>' +
+    '<tr><td class="e">KULLANILAN İLK İZİN GÜNÜ</td><td class="ort v">' + sayi(once) + '</td><td class="e">KALAN İZİN GÜNÜ</td><td class="ort v">' + sayi(kalan) + '</td></tr>' +
+    '<tr><td class="e">İZİN BAŞLAMA TARİHİ</td><td class="ort v">' + goster(iz.baslangic) + " " + gunAdi(iz.baslangic) + '</td><td class="e">İŞ BAŞI TARİHİ</td><td class="ort v">' + goster(iz.isBasi) + " " + gunAdi(iz.isBasi) + '</td></tr>' +
+    '</table>' +
+    '<div class="not">BELİRTİLEN TARİHLERDE İZİN KULLANMASI UYGUNDUR……</div>' +
+    '<table><tr><td class="e ort">AMİR / ŞEF / SORUMLU</td><td class="e ort">MÜDÜR YARD.</td><td class="e ort">MÜDÜR</td><td class="e ort">İNSAN KAYNAKLARI</td></tr>' +
+    '<tr><td class="imza">Avrupa Yakası Bakım Şefliği<br>Birim Sorumlusu<br>' + esc(imzaAdi) + '</td><td class="imza"></td><td class="imza"></td><td class="imza"></td></tr></table>' +
+    '<scr' + 'ipt>setTimeout(function(){print()},500)</scr' + 'ipt></body></html>';
+  const w = window.open("", "_blank", "width=900,height=1000");
+  if (!w) { bildir("Form penceresi açılamadı. Açılır pencere engelini kaldır.", true); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 
 async function izinFormu(id) {
@@ -579,29 +655,7 @@ async function izinFormu(id) {
   if (iz.tur === RAPOR) { bildir("Sağlık raporu için izin formu hazırlanmaz.", true); return; }
   if (isperMi(p)) { isperFormu(iz, p); return; }
   if (cirakMi(p)) { await cirakFormu(iz, p); return; }
-  const b = bakiyeOku(p.id, iz.yil);
-  const once = b.onc + kullanilan(p.id, iz.yil, iz.id, iz.baslangic);
-  const bu = iz.tur === "YILLIK İZİN" ? iz.gun : 0;
-  const amir = V.ayarlar.izinAmiri ? V.ayarlar.izinAmiri + "\nBirim Sorumlusu" : "";
-  const gunAdi = s => "(" + GUNLER[tarihNesne(s).getDay()] + ")";
-  const hucreler = [
-    { h: "D8", v: p.ad }, { h: "K8", v: p.sicil }, { h: "D9", v: p.tc }, { h: "D10", v: p.mudurluk }, { h: "D11", v: p.bina },
-    { h: "D12", v: p.kadro + (p.gorev ? " (" + p.gorev + ")" : "") }, { h: "D13", v: iz.adres || p.adres }, { h: "D14", v: p.telefon },
-    { h: "D15", v: iz.baslangic, tip: "tarih" }, { h: "L15", v: iz.gun, tip: "sayi" }, { h: "D16", v: iz.yil, tip: "sayi" },
-    { h: FORM_ISARET[iz.tur] || "C21", v: "X" }, { h: "H23", v: p.ad },
-    { h: "D26", v: b.dev + b.hak, tip: "sayi" }, { h: "F26", v: bu, tip: "sayi" }, { h: "I26", v: once, tip: "sayi" }, { h: "L26", v: b.dev + b.hak - once - bu, tip: "sayi" },
-    { h: "D27", v: iz.baslangic, tip: "tarih" }, { h: "F27", v: gunAdi(iz.baslangic) }, { h: "D28", v: iz.isBasi, tip: "tarih" }, { h: "F28", v: gunAdi(iz.isBasi) }
-  ];
-  if (p.iseGiris) hucreler.push({ h: "D25", v: p.iseGiris, tip: "tarih" });
-  if (amir) hucreler.push({ h: "C32", v: amir });
-  const hedef = izinKlasoru(iz, p) + "\\" + dosyaAdi(izinDosyaAdi(iz, p)) + ".xlsx";
-  bildir("İzin formu hazırlanıyor… (Excel birkaç saniye sürebilir)");
-  try {
-    const c = await api("/api/excel", { sablon: "izin_formu.xlsx", hedef, hucreler, ac: true });
-    bildir("İzin formu açıldı: " + c.dosya);
-    // Programın hafızasına ekle: bu izne bağlı Excel form
-    if (!(iz.belgeler || []).some(b => b.yol === c.dosya)) { iz.belgeler = (iz.belgeler || []).concat([{ tur: "Excel form", yol: c.dosya, tarih: bugun() }]); await kaydet("izinler"); }
-  } catch (e) { bildir("İzin formu hazırlanamadı: " + e.message, true); }
+  bogaziciFormu(iz, p);
 }
 
 SAYFALAR.ayarlar = function () {
