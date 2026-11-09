@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muhasebe – Personel İşleri</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1F4E78">
+<link rel="stylesheet" href="stil.css">
+<link rel="icon" type="image/png" href="formlar/favicon.png">
+<style>
+#kapi{position:fixed;inset:0;background:#eef3f8;display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+#kapi .kutu{max-width:520px;width:100%;background:#fff;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.12);padding:26px 28px;text-align:center}
+#kapi h1{color:#1F4E78;margin:0 0 4px;font-size:22px}
+#kapi p{color:#4a5a6a;line-height:1.5;margin:10px 0}
+#kapi button{margin-top:10px;padding:12px 22px;border:0;border-radius:9px;background:#1F4E78;color:#fff;font:600 16px system-ui,Arial;cursor:pointer}
+#kapi .ikinci{background:#fff;color:#1F4E78;border:1px solid #1F4E78;margin-left:8px;font-weight:500}
+#kapi .hata{color:#c0392b;margin-top:12px;min-height:20px}
+#kapi small{color:#7a8aa0}
+</style>
+</head>
+<body>
+<aside id="yan">
+  <div class="logo">MUHASEBE<small>Personel İşleri · Avrupa Bakım Şefliği</small></div>
+  <nav id="menu">
+    <a href="#ana" data-sayfa="ana">🏠 Ana Sayfa</a>
+    <a href="#personel" data-sayfa="personel">👥 Personel</a>
+    <a href="#izinler" data-sayfa="izinler">🏖 İzinler</a>
+    <a href="#ayarlar" data-sayfa="ayarlar">⚙ Ayarlar</a>
+  </nav>
+  <div id="durum"></div>
+</aside>
+<main id="icerik"><div class="yukleniyor">Yükleniyor…</div></main>
+<div id="pencere" hidden><div id="pencereKutu"></div></div>
+<div id="bildirim" hidden></div>
+
+<div id="kapi" hidden>
+  <div class="kutu">
+    <h1>MUHASEBE – Personel İşleri</h1>
+    <div id="kapiIcerik"></div>
+    <div class="hata" id="kapiHata"></div>
+  </div>
+</div>
+
+<script src="veri_katmani.js"></script>
+<script src="uygulama.js"></script>
+<script>
+(function () {
+  const kapi = document.getElementById("kapi"), icerik = document.getElementById("kapiIcerik"), hataEl = document.getElementById("kapiHata");
+  const DB = "muhasebeFS", KEY = "kok";
+  function idb() { return new Promise((res, rej) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore("h"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+  async function handleKaydet(h) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("h", "readwrite"); t.objectStore("h").put(h, KEY); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+  async function handleOku() { try { const db = await idb(); return await new Promise(res => { const t = db.transaction("h", "readonly"); const q = t.objectStore("h").get(KEY); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch (e) { return null; } }
+  async function izinVar(h, istek) { const o = { mode: "readwrite" }; if ((await h.queryPermission(o)) === "granted") return true; if (!istek) return false; return (await h.requestPermission(o)) === "granted"; }
+  async function gecerliKok(h) { try { await h.getDirectoryHandle("2-KAYITLAR"); return true; } catch (e) { return false; } }
+
+  function goster(html) { kapi.hidden = false; icerik.innerHTML = html; hataEl.textContent = ""; }
+  function kapat() { kapi.hidden = true; }
+
+  async function basla(h) {
+    DK.handle = h; kapat();
+    document.getElementById("durum").textContent = "📁 " + (h.name || "klasör");
+    await window.baslat();
+  }
+
+  async function klasorSec() {
+    hataEl.textContent = "";
+    let h;
+    try { h = await window.showDirectoryPicker({ mode: "readwrite", id: "teknikpanel" }); }
+    catch (e) { return; } // kullanıcı vazgeçti
+    if (!(await gecerliKok(h))) { hataEl.textContent = "Bu klasör TEKNİK PANEL değil (içinde 2-KAYITLAR yok). Lütfen TEKNİK PANEL klasörünü seç."; return; }
+    if (!(await izinVar(h, true))) { hataEl.textContent = "Klasöre yazma izni verilmedi."; return; }
+    try { await handleKaydet(h); } catch (e) {}
+    basla(h);
+  }
+
+  function ekranSec() {
+    goster('<p>Program kayıtların <b>TEKNİK PANEL</b> klasöründe. Başlamak için bir kez o klasörü göster.</p>' +
+      '<p><small>Seçtiğin klasörü hatırlar, her açılışta tekrar sormaz. Verilerin bu bilgisayarda kalır, internete gitmez.</small></p>' +
+      '<button id="btnSec">📁 TEKNİK PANEL klasörünü seç</button>');
+    document.getElementById("btnSec").onclick = klasorSec;
+  }
+  function ekranDevam(h) {
+    goster('<p>Hoş geldin. Kayıtlarına erişmek için devam et.</p><button id="btnDevam">Devam et</button> <button class="ikinci" id="btnBaska">Başka klasör seç</button>');
+    document.getElementById("btnDevam").onclick = async () => { if (await izinVar(h, true) && await gecerliKok(h)) basla(h); else ekranSec(); };
+    document.getElementById("btnBaska").onclick = klasorSec;
+  }
+  function ekranYok() {
+    goster('<p>Bu program <b>Google Chrome</b> ya da <b>Microsoft Edge</b> ile çalışır. Lütfen bu sayfayı Chrome ile aç.</p>');
+  }
+
+  window.addEventListener("DOMContentLoaded", async () => {
+    // Deneme modu: ?demo — klasör seçmeden yerel test sunucusundan okur
+    if (location.search.indexOf("demo") >= 0) { DK.demo = true; document.getElementById("durum").textContent = "deneme"; try { await window.baslat(); } catch (e) {} return; }
+    if (!window.showDirectoryPicker) { ekranYok(); return; }
+    const h = await handleOku();
+    if (h && (await izinVar(h, false)) && (await gecerliKok(h))) { basla(h); return; }
+    if (h) ekranDevam(h); else ekranSec();
+  });
+
+  if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
+})();
+</script>
+</body>
+</html>
