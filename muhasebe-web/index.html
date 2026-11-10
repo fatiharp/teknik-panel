@@ -100,6 +100,26 @@
   });
 
   if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
+
+  // Yeni sürüm uyarısı: GitHub'a yeni sürüm yüklenince açık pencere eski kodla çalışmasın.
+  // Her yüklemede surum.txt ile aşağıdaki SURUM aynı değere çıkarılır.
+  const SURUM = "2026-11-10b";
+  function yeniSurumGoster() {
+    if (document.getElementById("yeniSurum")) return;
+    const d = document.createElement("div");
+    d.id = "yeniSurum";
+    d.innerHTML = "🔄 Programın yeni sürümü var. <b>Yenilemek için tıkla</b>";
+    d.style.cssText = "position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:100;background:#1F4E78;color:#fff;padding:10px 18px;border-radius:10px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);font:15px system-ui,Arial";
+    d.onclick = () => location.reload();
+    document.body.appendChild(d);
+  }
+  async function surumKontrol() {
+    if (location.search.indexOf("demo") >= 0) return;
+    try { const t = (await (await fetch("surum.txt?x=" + Date.now(), { cache: "no-store" })).text()).trim(); if (t && t !== SURUM) yeniSurumGoster(); } catch (e) {}
+  }
+  setInterval(surumKontrol, 120000);
+  window.addEventListener("focus", surumKontrol);
+  window.addEventListener("load", () => setTimeout(surumKontrol, 3000));
 })();
 </script>
 </body>
