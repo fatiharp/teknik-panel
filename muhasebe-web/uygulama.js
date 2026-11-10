@@ -313,26 +313,31 @@ function izinTablosu() {
     [yil - 1, yil, yil + 1].map(y => "<option" + (y === yil ? " selected" : "") + ">" + y + "</option>").join("") + "</select>" +
     '<span class="not">Sadece <b>yıllık izinler</b> sayılır; izin hangi ayda başladıysa o aya yazılır. "Ay belirsiz" = programa tarihli kaydı girilmemiş, bakiyeden düşülmüş günler.</span></div>';
   Object.keys(gruplar).forEach(g => {
-    let topKalan = 0;
+    let topKalan = 0, topOnceki = 0;
     html += '<div class="kutu" style="padding:10px;overflow:auto"><h2>' + esc(g) + " — " + yil + " izin takip</h2>" +
-      '<table style="font-size:12.5px;min-width:1250px"><thead><tr><th style="' + st + '">S.No</th><th style="' + st + ';text-align:left">Adı soyadı</th><th style="' + st + '">İşe giriş</th>' +
+      '<table style="font-size:12.5px;min-width:1340px"><thead><tr><th style="' + st + '">S.No</th><th style="' + st + ';text-align:left">Adı soyadı</th><th style="' + st + '">İşe giriş</th>' +
       '<th style="' + st + ';background:#fff3d6">' + (yil - 1) + "'den devreden</th><th style=\"" + st + ';background:#fff3d6">' + yil + " hak</th><th style=\"" + st + ';background:#fff3d6">Toplam</th>' +
       AYLAR.map(a => '<th style="' + st + '">' + a.slice(0, 3) + "</th>").join("") +
-      '<th style="' + st + '">Ay belirsiz</th><th style="' + st + '">Kullanılan</th><th style="' + st + ';background:#c62828;color:#fff">KALAN</th></tr></thead><tbody>';
+      '<th style="' + st + '">Ay belirsiz</th><th style="' + st + '">Kullanılan</th><th style="' + st + ';background:#e2f0d9">' + (yil - 1) + "'den kalan</th><th style=\"" + st + ';background:#c62828;color:#fff">KALAN</th></tr></thead><tbody>';
     gruplar[g].forEach((p, n) => {
       const b = bakiyeOku(p.id, yil), aylik = new Array(12).fill(0);
       V.izinler.filter(i => i.personelId === p.id && i.yil === yil && i.tur === "YILLIK İZİN").forEach(i => { aylik[tarihNesne(i.baslangic).getMonth()] += +i.gun || 0; });
       const kul = aylik.reduce((t, x) => t + x, 0) + b.onc, kalan = b.dev + b.hak - kul;
+      // Program dışında kullanılan ama hangi ayda olduğu bilinen günler (bakiye.aylik: {"7":7,"9":4}) kendi ayına yazılır
+      const br = V.bakiye.find(x => x.personelId === p.id && x.yil === yil), disAy = (br && br.aylik) || {};
+      let disTop = 0; Object.keys(disAy).forEach(m => { const g = +disAy[m] || 0; if (+m >= 1 && +m <= 12) { aylik[+m - 1] += g; disTop += g; } });
+      const belirsiz = Math.max(0, b.onc - disTop), oncekiKalan = Math.max(0, b.dev - kul);
       const bilgiYok = !p.iseGiris && !b.kayitVar;
-      topKalan += bilgiYok ? 0 : kalan;
+      topKalan += bilgiYok ? 0 : kalan; topOnceki += bilgiYok ? 0 : oncekiKalan;
       const renk = bilgiYok ? "#eee" : kalan <= 5 ? "#f08a24" : "#3d8b3d";
       html += '<tr class="tikla" data-id="' + p.id + '"><td style="' + st + '">' + (n + 1) + '</td><td style="' + st + ';text-align:left;white-space:nowrap">' + esc(p.ad) + '</td><td style="' + st + '">' + goster(p.iseGiris) + "</td>" +
         '<td style="' + st + '">' + sayi(b.dev) + '</td><td style="' + st + '">' + sayi(b.hak) + '</td><td style="' + st + ';font-weight:700">' + sayi(b.dev + b.hak) + "</td>" +
         aylik.map(x => '<td style="' + st + (x ? ";background:#dbe9f7;font-weight:700" : "") + '">' + (x ? sayi(x) : "") + "</td>").join("") +
-        '<td style="' + st + ';color:#777">' + (b.onc ? sayi(b.onc) : "") + '</td><td style="' + st + '">' + sayi(kul) + "</td>" +
+        '<td style="' + st + ';color:#777">' + (belirsiz ? sayi(belirsiz) : "") + '</td><td style="' + st + '">' + sayi(kul) + "</td>" +
+        '<td style="' + st + ';background:#e2f0d9;font-weight:700">' + (bilgiYok ? "" : sayi(oncekiKalan)) + "</td>" +
         '<td style="' + st + ";background:" + renk + ";color:" + (bilgiYok ? "#777" : "#fff") + ';font-weight:700">' + (bilgiYok ? "bilgi yok" : sayi(kalan)) + "</td></tr>";
     });
-    html += '<tr><td colspan="19" style="' + st + ';text-align:right;font-weight:700">Toplam personel: ' + gruplar[g].length + '</td><td style="' + st + ';font-weight:700;color:#c62828">' + sayi(topKalan) + "</td></tr></tbody></table></div>";
+    html += '<tr><td colspan="20" style="' + st + ';text-align:right;font-weight:700">Toplam personel: ' + gruplar[g].length + '</td><td style="' + st + ';font-weight:700">' + sayi(topOnceki) + '</td><td style="' + st + ';font-weight:700;color:#c62828">' + sayi(topKalan) + "</td></tr></tbody></table></div>";
   });
   return html;
 }
