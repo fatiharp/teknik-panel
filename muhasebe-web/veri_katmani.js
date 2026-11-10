@@ -99,11 +99,24 @@ const DK = {
   },
 
   /* ---- dosya yaz (belge yükleme) — eski fetch(...) yerine ---- */
+  // Var olan dosyanın üstüne asla yazma: aynı ad varsa "ad (2).uzantı", "ad (3).uzantı"…
+  async bosAd(hedef) {
+    const parts = DK.parcala(hedef), ad = parts.pop();
+    let h = DK.handle;
+    for (const p of parts) h = await h.getDirectoryHandle(p, { create: true });
+    const m = /^(.*?)(\.[^.]*)?$/.exec(ad), kok = m[1], uz = m[2] || "";
+    let aday = ad;
+    for (let i = 2; i < 500; i++) {
+      try { await h.getFileHandle(aday); aday = kok + " (" + i + ")" + uz; } catch (e) { break; }
+    }
+    return { dizin: h, ad: aday, yol: parts.concat([aday]).join("\\") };
+  },
   async dosyaYazResp(hedef, blob) {
     try {
-      const { tutamac } = await DK.dosyaTutamac(hedef, true);
-      const w = await tutamac.createWritable(); await w.write(blob); await w.close();
-      return { ok: true, json: async () => ({ dosya: hedef }) };
+      const b = await DK.bosAd(hedef);
+      const fh = await b.dizin.getFileHandle(b.ad, { create: true });
+      const w = await fh.createWritable(); await w.write(blob); await w.close();
+      return { ok: true, json: async () => ({ dosya: b.yol }) };
     } catch (e) {
       return { ok: false, json: async () => ({ hata: e.message }) };
     }

@@ -203,6 +203,10 @@ async function kisiBelgeleri(p) {
   const gruplar = BELGE_GRUPLARI.concat(Array.from(new Set(l.map(b => b.grup).filter(g => g && !BELGE_GRUPLARI.includes(g)))));
   if (l.some(b => !b.grup)) gruplar.push("");
   if (!gruplar.includes(belgeGrubu)) belgeGrubu = gruplar[0];
+  // RAPOR bölümüne yüklenen dosyanın adı için tarih/gün: son 14 gündeki rapor kaydından, yoksa bugün / 1 gün
+  const sonRapor = V.izinler.filter(i => i.personelId === p.id && i.tur === RAPOR && i.baslangic >= gunEkle(bugun(), -14)).sort((a, b) => a.baslangic < b.baslangic ? 1 : -1)[0];
+  const rv = { t: sonRapor ? sonRapor.baslangic : bugun(), g: sonRapor ? +sonRapor.gun || 1 : 1 };
+  const raporOrnek = () => (rv.t ? dosyaAdi(raporDosyaAdi(rv.t, p.ad, rv.g || 1)) : "—") + ".jpeg / .pdf";
   const ciz = () => {
     const secili = l.filter(b => b.grup === belgeGrubu).sort((a, b) => a.tarih < b.tarih ? 1 : -1);
     kutu.innerHTML =
@@ -213,15 +217,26 @@ async function kisiBelgeleri(p) {
         '<tr class="tikla" data-b="' + n + '"><td style="width:28px">' + belgeSimge(b.ad) + "</td><td>" + esc(b.ad) +
         (b.alt && b.alt !== b.grup ? '<div class="not">' + esc(b.alt.replace(b.grup + "\\", "")) + "</div>" : "") + '</td><td class="not" style="white-space:nowrap">' + goster(b.tarih) + "</td></tr>").join("") + "</tbody></table></div>"
         : '<div class="not" style="padding:8px 0">' + (c.klasor ? "Bu bölümde belge yok." : "Bu kişinin henüz klasörü yok; ilk belgeyi eklediğinde oluşur.") + "</div>") +
+      (belgeGrubu === "RAPOR" ? '<div class="form" style="grid-template-columns:1fr 1fr;margin-top:8px"><div><label>Rapor başlangıç tarihi</label><input type="date" id="bRTarih" value="' + esc(rv.t) + '"></div>' +
+        '<div><label>Kaç gün</label><input type="number" id="bRGun" min="0.5" step="0.5" value="' + esc(rv.g) + '"></div>' +
+        '<div class="tam not">Yüklenen rapor şu adla kaydedilir: <b id="bROrnek">' + esc(raporOrnek()) + "</b></div></div>" : "") +
       '<div id="bBirak" style="margin-top:8px;padding:12px;border:2px dashed #9cb3cc;border-radius:8px;text-align:center;background:#f7fafd" class="not">' +
       "📎 <b>" + (belgeGrubu || "Diğer") + '</b> bölümüne belge eklemek için dosyaları buraya sürükle ya da <label style="color:var(--mavi);text-decoration:underline;cursor:pointer">dosya seç<input type="file" id="bDosya" multiple hidden></label></div>';
     $$("[data-bg]", kutu).forEach(b => b.onclick = () => { belgeGrubu = b.dataset.bg; ciz(); });
     $$("[data-b]", kutu).forEach(t => t.onclick = () => belgeAc(secili[+t.dataset.b].yol));
     if (c.klasor) $("#bKlasor").onclick = () => belgeAc(c.klasor);
+    if (belgeGrubu === "RAPOR") {
+      const guncelle = () => { rv.t = $("#bRTarih").value; rv.g = +$("#bRGun").value || 1; $("#bROrnek").textContent = raporOrnek(); };
+      $("#bRTarih").oninput = guncelle; $("#bRGun").oninput = guncelle;
+    }
     const yukle = async dosyalar => {
+      if (belgeGrubu === "RAPOR" && !rv.t) { bildir("Önce rapor başlangıç tarihini gir.", true); return; }
       let n = 0;
       for (const d of Array.from(dosyalar || [])) {
-        const hedef = klasor + (belgeGrubu ? "\\" + belgeGrubu : "") + "\\" + dosyaAdi(d.name);
+        const uzanti = (d.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
+        const hedef = belgeGrubu === "RAPOR"
+          ? klasor + "\\RAPOR\\" + dosyaAdi(raporDosyaAdi(rv.t, p.ad, rv.g || 1)) + uzanti
+          : klasor + (belgeGrubu ? "\\" + belgeGrubu : "") + "\\" + dosyaAdi(d.name);
         try {
           const r = await DK.dosyaYazResp(hedef, d);
           const j = await r.json(); if (!r.ok || j.hata) throw new Error(j.hata || r.status); n++;
@@ -470,6 +485,9 @@ function izinDosyaAdi(iz, p) {
   const d = tarihNesne(iz.baslangic);
   return d.getFullYear() + "." + iki(d.getMonth() + 1) + "." + iki(d.getDate()) + " - " + p.ad + " - " + sayi(iz.gun) + " GÜN " + iz.tur;
 }
+// Rapor dosya adı: "2026.11.10- EREN SARICI - 1 GÜN RAPOR"
+function raporDosyaAdi(bas, ad, gun) { const d = tarihNesne(bas); return d.getFullYear() + "." + iki(d.getMonth() + 1) + "." + iki(d.getDate()) + "- " + ad + " - " + sayi(gun) + " GÜN RAPOR"; }
+function raporKlasoru(p) { return (BILGI.personelKlasoru || "4-PERSONEL") + "\\" + sirketKlasoru(p) + "\\" + dosyaAdi(p.ad) + "\\RAPOR"; }
 async function belgeAc(yol) {
   try { await api("/api/ac", { yol }); } catch (e) { bildir("Açılamadı: " + e.message, true); }
 }
@@ -478,14 +496,16 @@ async function belgeYukle(izinId, dosya) {
   if (!iz || !p) return false;
   const uz = (dosya.name.match(/\.[a-z0-9]+$/i) || [".pdf"])[0].toLowerCase();
   if (![".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".jfif"].includes(uz)) { bildir("Sadece PDF ya da resim (JPG, PNG) yüklenebilir.", true); return false; }
-  const hedef = izinKlasoru(iz, p) + "\\" + dosyaAdi(izinDosyaAdi(iz, p) + " - İMZALI") + uz;
+  const rapor = iz.tur === RAPOR;
+  const hedef = rapor ? raporKlasoru(p) + "\\" + dosyaAdi(raporDosyaAdi(iz.baslangic, p.ad, iz.gun)) + uz
+    : izinKlasoru(iz, p) + "\\" + dosyaAdi(izinDosyaAdi(iz, p) + " - İMZALI") + uz;
   bildir("Yükleniyor…");
   try {
     const r = await DK.dosyaYazResp(hedef, dosya);
     const c = await r.json();
     if (!r.ok || c.hata) throw new Error(c.hata || ("Hata " + r.status));
-    iz.belgeler = (iz.belgeler || []).concat([{ tur: "İmzalı form", yol: c.dosya, tarih: bugun() }]);
-    if (await kaydet("izinler")) { bildir("İmzalı form kaydedildi."); return true; }
+    iz.belgeler = (iz.belgeler || []).concat([{ tur: rapor ? "Rapor" : "İmzalı form", yol: c.dosya, tarih: bugun() }]);
+    if (await kaydet("izinler")) { bildir(rapor ? "Rapor kaydedildi: " + c.dosya.split("\\").pop() : "İmzalı form kaydedildi."); return true; }
   } catch (e) { bildir("Yüklenemedi: " + e.message, true); }
   return false;
 }
@@ -644,7 +664,7 @@ async function bogaziciFormu(iz, p) {
     const a = document.createElement("a"); a.href = url; a.download = dad;
     a.style.display = "none"; document.body.appendChild(a); a.click();
     setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
-    if (!(iz.belgeler || []).some(x => x.yol === hedef)) { iz.belgeler = (iz.belgeler || []).concat([{ tur: "Excel form", yol: hedef, tarih: bugun() }]); await kaydet("izinler"); }
+    if (!(iz.belgeler || []).some(x => x.yol === c.dosya)) { iz.belgeler = (iz.belgeler || []).concat([{ tur: "Excel form", yol: c.dosya, tarih: bugun() }]); await kaydet("izinler"); }
     bildir("İzin formu kişinin İZİN klasörüne kaydedildi ve indirildi.");
   } catch (e) { bildir("İzin formu hazırlanamadı: " + e.message, true); }
 }
