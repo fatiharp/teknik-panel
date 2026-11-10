@@ -429,10 +429,12 @@ SAYFALAR.izinler = function () {
       return '<tr class="tikla" data-izin="' + i.id + '"><td><b>' + esc(p.ad) + "</b></td><td>" + esc(i.tur) + "</td><td>" + gosterGun(i.baslangic) + '</td><td class="sag">' + sayi(i.gun) +
         "</td><td>" + gosterGun(i.isBasi) + '</td><td><span class="rozet ' + d.sinif + '">' + (i.tur === RAPOR && d.ad === "İzinde" ? "Raporlu" : d.ad) + "</span></td><td>" +
         (imzaliBelge(i) ? '<button class="kucuk" data-imza="' + i.id + '">📎 Aç</button>' : '<span class="not">' + (i.baslangic <= b ? "⚠ yok" : "—") + "</span>") + "</td><td>" +
-        (i.tur === RAPOR ? "" : '<button class="kucuk" data-form="' + i.id + '">📄 İzin formu</button>') + "</td></tr>";
+        (i.tur === RAPOR ? "" : '<button class="kucuk" data-form="' + i.id + '">📄 İzin formu</button> ') +
+        '<button class="kucuk" data-wp="' + i.id + '" title="Bu izni WhatsApp\'ta paylaş">📱 Paylaş</button>' + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="bos">Bu listede izin yok.</td></tr>';
-    $$("#liste [data-izin]").forEach(t => t.onclick = e => { if (!e.target.dataset.form && !e.target.dataset.imza) izinPencere(+t.dataset.izin); });
+    $$("#liste [data-izin]").forEach(t => t.onclick = e => { if (!e.target.dataset.form && !e.target.dataset.imza && !e.target.dataset.wp) izinPencere(+t.dataset.izin); });
     $$("#liste [data-form]").forEach(t => t.onclick = () => izinFormu(+t.dataset.form));
+    $$("#liste [data-wp]").forEach(t => t.onclick = () => { const iz = V.izinler.find(x => x.id === +t.dataset.wp), p = personelBul(iz.personelId) || {}; formPaylasPrompt(iz, p, "📱 İzni WhatsApp'ta paylaş"); });
     $$("#liste [data-imza]").forEach(t => t.onclick = () => belgeAc(imzaliBelge(V.izinler.find(x => x.id === +t.dataset.imza)).yol));
   };
   $$("[data-s]").forEach(x => x.onclick = () => { izinSekme = x.dataset.s; SAYFALAR.izinler(); });
@@ -769,11 +771,11 @@ async function izinFormu(id) {
 function izinMesaji(iz, p) {
   return "📋 İZİN BİLGİSİ\n" + (p.ad || "") + "\nTür: " + iz.tur + "\nÇıkış: " + gosterGun(iz.baslangic) + "\nDönüş (işbaşı): " + gosterGun(iz.isBasi) + "\nGün: " + sayi(iz.gun);
 }
-function formPaylasPrompt(iz, p) {
+function formPaylasPrompt(iz, p, baslik) {
   const metin = izinMesaji(iz, p);
   pencereAc(
-    "<h2>✅ İzin formu hazır</h2>" +
-    '<div class="not" style="margin-bottom:8px">İstersen bu bilgiyi hemen WhatsApp grubunda paylaş; böylece unutmazsın. Metni düzenleyebilirsin.</div>' +
+    "<h2>" + (baslik || "✅ İzin formu hazır") + "</h2>" +
+    '<div class="not" style="margin-bottom:8px">Bu bilgiyi WhatsApp grubunda paylaş; böylece unutmazsın. Metni düzenleyebilirsin.</div>' +
     '<textarea id="fpMetin" style="width:100%;height:150px;box-sizing:border-box;font:13px Consolas,monospace;border:1px solid #9aa9b8;border-radius:6px;padding:8px">' + esc(metin) + "</textarea>" +
     '<div class="pencere-alt"><button id="fpKapat">Kapat</button><button id="fpKopya">📋 Kopyala</button><button class="ana" id="fpWa">📱 WhatsApp\'ta paylaş</button></div>');
   $("#fpKapat").onclick = pencereKapat;
