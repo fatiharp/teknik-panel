@@ -475,6 +475,28 @@ function izinPencere(id, pidVarsayilan) {
     if (hata) bildir("İzin silindi ama bazı dosyalar silinemedi: " + hata, true);
     else bildir("İzin silindi" + (tasinan ? "; " + tasinan + " dosya da silindi." : "."));
   };
+  // Yeni izinde eklenen dosyalar burada bekler; Kaydet'e basınca izinle birlikte yüklenir
+  const bekleyen = [];
+  if (!id) {
+    const liste = () => {
+      $("#bekleyenListe").innerHTML = bekleyen.length ? "<table><tbody>" + bekleyen.map((f, n) => "<tr><td>📎 " + esc(f.name) +
+        '</td><td class="sag"><button class="kucuk tehlike" data-bkl="' + n + '" title="Listeden çıkar">✕</button></td></tr>').join("") + "</tbody></table>" : "Dosya eklenmedi.";
+      $$("[data-bkl]").forEach(b => b.onclick = () => { bekleyen.splice(+b.dataset.bkl, 1); liste(); });
+    };
+    const ekle = fl => {
+      for (const f of Array.from(fl || [])) {
+        const uz = (f.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
+        if (![".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".jfif"].includes(uz)) { bildir(f.name + ": sadece PDF ya da resim eklenebilir.", true); continue; }
+        bekleyen.push(f);
+      }
+      liste();
+    };
+    $("#bdosya").onchange = e => { ekle(e.target.files); e.target.value = ""; };
+    const z = $("#birak");
+    z.ondragover = e => { e.preventDefault(); z.style.background = "#e3effb"; };
+    z.ondragleave = () => { z.style.background = "#f7fafd"; };
+    z.ondrop = e => { e.preventDefault(); z.style.background = "#f7fafd"; ekle(e.dataTransfer.files); };
+  }
   async function kaydetIzin(formDa) {
     const pid = +g("personelId"), gun = +g("gun");
     if (!pid) { bildir("Personel seç.", true); return; }
@@ -485,7 +507,11 @@ function izinPencere(id, pidVarsayilan) {
     if (!id) { yeni.id = yeniId(V.izinler); yeni.kayit = bugun(); V.izinler.push(yeni); }
     else V.izinler[V.izinler.findIndex(i => i.id === id)] = yeni;
     if (!await kaydet("izinler")) return;
-    pencereKapat(); bildir("İzin kaydedildi."); git();
+    let eklenen = 0;
+    if (bekleyen.length) { bildir("Dosyalar kaydediliyor…"); for (const f of bekleyen) { if (await belgeYukle(yeni.id, f)) eklenen++; } }
+    pencereKapat(); git();
+    if (eklenen < bekleyen.length) bildir("İzin kaydedildi ama " + (bekleyen.length - eklenen) + " dosya eklenemedi; izni açıp tekrar ekle.", true);
+    else bildir("İzin kaydedildi" + (eklenen ? " ve " + eklenen + " dosya eklendi." : "."));
     if (formDa && yeni.tur !== RAPOR) izinFormu(yeni.id);
   }
   $("#izKaydet").onclick = () => kaydetIzin(false);
@@ -533,7 +559,10 @@ async function belgeYukle(izinId, dosya) {
   return false;
 }
 function belgeBolumu(iz) {
-  if (!iz.id) return '<div class="not" style="margin-top:12px">İmzalı formu, izni kaydettikten sonra ekleyebilirsin.</div>';
+  if (!iz.id) return '<h2 style="margin-top:16px">Belgeler</h2><div id="bekleyenListe" class="not">Dosya eklenmedi.</div>' +
+    '<div id="birak" style="margin-top:10px;padding:14px;border:2px dashed #9cb3cc;border-radius:8px;text-align:center;background:#f7fafd">' +
+    '📎 Taranmış <b>imzalı izin formunu</b> ya da <b>raporu</b> buraya sürükle ya da <label style="color:var(--mavi);text-decoration:underline;cursor:pointer">dosya seç<input type="file" id="bdosya" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.jfif" hidden></label>' +
+    '<div class="not" style="margin-top:4px">Dosya, <b>Kaydet</b>\'e bastığında izinle birlikte doğru klasöre otomatik adla kaydedilir.</div></div>';
   const l = iz.belgeler || [];
   return '<h2 style="margin-top:16px">Belgeler</h2>' +
     (l.length ? "<table><tbody>" + l.map((b, n) => "<tr><td>" + (b.tur === "İmzalı form" ? "✅ " : "📄 ") + esc(b.tur) + '</td><td class="not">' + esc(b.yol.split("\\").pop()) +
