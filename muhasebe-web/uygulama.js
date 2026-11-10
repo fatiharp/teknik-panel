@@ -2,7 +2,7 @@
    Veriler sunucu.ps1 üzerinden Belgeler\TeknikPanel\veri\*.json dosyalarında tutulur. */
 "use strict";
 
-const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], ayarlar: {} };
+const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], tesisler: [], ayarlar: {} };
 const GIRIS_LINK = "https://personel.ibb.istanbul/";
 async function panoyaKopyala(metin, dugme) {
   if (!metin) { bildir("Kopyalanacak bir şey yok.", true); return; }
@@ -811,6 +811,67 @@ SAYFALAR.ayarlar = function () {
   tCiz();
 };
 
+/* ---------------- Tesisler ---------------- */
+let tesisArama = "", tesisKategori = "";
+const TESIS_KATEGORILER = ["Sosyal Tesis", "Kent Lokantası", "İtfaiye", "Otel / Konaklama"];
+SAYFALAR.tesisler = function () {
+  $("#icerik").innerHTML =
+    '<div class="ust"><h1>Tesisler</h1><input class="ara" id="ara" placeholder="Ara: tesis, amir, dahili, muhasebeci…" value="' + esc(tesisArama) + '"><button class="ana" id="yeni">+ Yeni tesis</button></div>' +
+    '<div class="ust" style="margin-top:-4px"><div class="sekmeler" id="kategoriler"></div></div>' +
+    '<div id="liste"></div>' +
+    '<div class="kutu" id="envanterKutu" style="margin-top:14px"><h2>📁 Envanter dosyaları</h2><div class="not">Yükleniyor…</div></div>';
+  const ciz = () => {
+    const a = trKucuk(tesisArama), hepsi = V.tesisler || [];
+    const l = hepsi.filter(t => (!tesisKategori || t.kategori === tesisKategori) &&
+      (!a || trKucuk([t.ad, t.bagli, t.amir, t.amirDahili, t.amirCep, t.muhasebeci, t.not].join(" ")).includes(a)));
+    $("#kategoriler").innerHTML = '<button data-k=""' + (!tesisKategori ? ' class="secili"' : "") + ">Tümü (" + hepsi.length + ")</button>" +
+      TESIS_KATEGORILER.filter(k => hepsi.some(t => t.kategori === k)).map(k => '<button data-k="' + esc(k) + '"' + (tesisKategori === k ? ' class="secili"' : "") + ">" + k + " (" + hepsi.filter(t => t.kategori === k).length + ")</button>").join("");
+    $$("#kategoriler [data-k]").forEach(b => b.onclick = () => { tesisKategori = b.dataset.k; ciz(); });
+    const gruplar = TESIS_KATEGORILER.map(k => [k, l.filter(t => t.kategori === k)]).filter(x => x[1].length);
+    $("#liste").innerHTML = l.length ? gruplar.map(([k, ts]) =>
+      '<div class="kutu"><div class="pbas"><h2>' + k + '</h2><span class="not">' + ts.length + " tesis</span></div>" +
+      '<table><thead><tr><th>Tesis</th><th>Bağlı</th><th>Amir</th><th>Dahili</th><th>Cep</th><th>Muhasebeci</th><th>Muh. dahili</th><th>Not</th></tr></thead><tbody>' +
+      ts.map(t => '<tr class="tikla" data-id="' + t.id + '"><td><b>' + esc(t.ad) + "</b>" + (t.tur ? ' <span class="not">(' + esc(t.tur) + ")</span>" : "") + '</td><td class="not">' + esc(t.bagli) + "</td><td>" + esc(t.amir) + "</td><td>" + esc(t.amirDahili) + '</td><td class="tel">' + esc(telefonYaz(t.amirCep)) + "</td><td>" + esc(t.muhasebeci) + "</td><td>" + esc(t.muhDahili) + '</td><td class="not">' + esc(t.not) + "</td></tr>").join("") +
+      "</tbody></table></div>").join("") : '<div class="kutu bos">Kayıt bulunamadı.</div>';
+    $$("#liste [data-id]").forEach(t => t.onclick = () => tesisPencere(+t.dataset.id));
+  };
+  $("#ara").oninput = e => { tesisArama = e.target.value; ciz(); };
+  $("#yeni").onclick = () => tesisPencere(null);
+  ciz();
+  envanterListele();
+};
+async function envanterListele() {
+  const kutu = $("#envanterKutu"); if (!kutu) return;
+  let l = [];
+  try { l = await api("/api/klasor-belgeler", { klasor: "9-TESİS ENVANTER" }); } catch (e) { kutu.innerHTML = '<h2>📁 Envanter dosyaları</h2><div class="eksi">' + esc(e.message) + "</div>"; return; }
+  l.sort((a, b) => a.ad.localeCompare(b.ad, "tr"));
+  kutu.innerHTML = "<h2>📁 Envanter dosyaları (" + l.length + ")</h2>" +
+    '<div class="not" style="margin-bottom:6px">Tesis envanterleri, kombi/VRF kayıtları, kuver ve itfaiye listeleri. Tıkla, Excel\'de açılır.</div>' +
+    (l.length ? '<div style="max-height:260px;overflow:auto;border:1px solid var(--cizgi);border-radius:8px"><table><tbody>' + l.map((b, n) =>
+      '<tr class="tikla" data-e="' + n + '"><td style="width:28px">' + belgeSimge(b.ad) + "</td><td>" + esc(b.ad) + '</td><td class="not" style="white-space:nowrap">' + goster(b.tarih) + "</td></tr>").join("") + "</tbody></table></div>" : '<div class="not">Dosya yok.</div>');
+  $$("#envanterKutu [data-e]").forEach(x => x.onclick = () => belgeAc(l[+x.dataset.e].yol));
+}
+function tesisPencere(id) {
+  const t = id ? (V.tesisler.find(x => x.id === id) || {}) : { id: 0, kategori: "Sosyal Tesis", ad: "", bagli: "", tur: "", amir: "", amirDahili: "", amirCep: "", muhasebeci: "", muhDahili: "", not: "" };
+  const alan = (ad, et, tam) => '<div' + (tam ? ' class="tam"' : "") + '><label>' + et + '</label><input name="' + ad + '" value="' + esc(t[ad] || "") + '"></div>';
+  pencereAc(
+    "<h2>" + (id ? esc(t.ad) : "Yeni tesis") + "</h2>" +
+    '<form id="tf" class="form" autocomplete="off">' +
+    '<div><label>Kategori</label><select name="kategori">' + TESIS_KATEGORILER.map(k => "<option" + (k === t.kategori ? " selected" : "") + ">" + k + "</option>").join("") + "</select></div>" +
+    alan("ad", "Tesis adı *") + alan("bagli", "Bağlı (kent lokantası / sosyal tesis / konum)") + alan("tur", "Tür (otel, kafeterya…)") +
+    alan("amir", "Tesis amiri") + alan("amirDahili", "Amir dahili") + alan("amirCep", "Amir cep") + alan("muhasebeci", "Muhasebeci") + alan("muhDahili", "Muhasebeci dahili") +
+    alan("not", "Not", true) + "</form>" +
+    '<div class="pencere-alt">' + (id ? '<button class="sol tehlike" id="tSil">Sil</button>' : "") + '<button id="tIptal">Vazgeç</button><button class="ana" id="tKaydet">Kaydet</button></div>');
+  $("#tIptal").onclick = pencereKapat;
+  if (id) $("#tSil").onclick = async () => { if (!confirm("Bu tesis kaydı silinsin mi?")) return; V.tesisler = V.tesisler.filter(x => x.id !== id); if (await kaydet("tesisler")) { pencereKapat(); bildir("Tesis silindi."); git(); } };
+  $("#tKaydet").onclick = async () => {
+    const f = $("#tf"), g = n => f.elements[n].value.trim();
+    if (!g("ad")) { bildir("Tesis adı boş olamaz.", true); return; }
+    const yeni = Object.assign({}, t, { kategori: f.elements.kategori.value, ad: g("ad"), bagli: g("bagli"), tur: g("tur"), amir: g("amir"), amirDahili: g("amirDahili"), amirCep: g("amirCep"), muhasebeci: g("muhasebeci"), muhDahili: g("muhDahili"), not: g("not") });
+    if (!id) { yeni.id = yeniId(V.tesisler); V.tesisler.push(yeni); } else V.tesisler[V.tesisler.findIndex(x => x.id === id)] = yeni;
+    if (await kaydet("tesisler")) { pencereKapat(); bildir("Kaydedildi."); git(); }
+  };
+}
 function yakinda(baslik, metin) {
   return function () { $("#icerik").innerHTML = "<h1>" + baslik + '</h1><div class="kutu"><p>' + metin + '</p><p class="not">Bu bölüm sıradaki adımlarda eklenecek.</p></div>'; };
 }

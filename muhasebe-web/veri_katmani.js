@@ -9,7 +9,7 @@
 const DK = {
   handle: null,
   demo: false,
-  KOKLER: { personel: [], izinler: [], bakiye: [], tatiller: [], saha: [], giris: [], ayarlar: {} },
+  KOKLER: { personel: [], izinler: [], bakiye: [], tatiller: [], saha: [], giris: [], tesisler: [], ayarlar: {} },
 
   /* ---- klasör gezinme yardımcıları (yol: "4-PERSONEL\\BOĞAZİÇİ\\AD\\İZİN\\2026") ---- */
   // Eski program belge yollarını TAM yol yazıyordu (C:\...\TEKNİK PANEL\4-PERSONEL\...).
@@ -98,6 +98,16 @@ const DK = {
     return { klasor: kokRel, belgeler };
   },
 
+  /* ---- bir klasördeki dosyaları listele (tesis envanterleri gibi) ---- */
+  async klasorListe(rel) {
+    let h; try { h = await DK.dizin(DK.kokRel(rel)); } catch (e) { return []; }
+    const out = [];
+    for await (const [isim, girdi] of h.entries()) {
+      if (girdi.kind === "file") { let tarih = ""; try { const f = await girdi.getFile(); tarih = new Date(f.lastModified).toISOString().slice(0, 10); } catch (e) {} out.push({ ad: isim, yol: DK.kokRel(rel) + "\\" + isim, tarih }); }
+    }
+    return out;
+  },
+
   /* ---- dosya yaz (belge yükleme) — eski fetch(...) yerine ---- */
   // Var olan dosyanın üstüne asla yazma: aynı ad varsa "ad (2).uzantı", "ad (3).uzantı"…
   async bosAd(hedef) {
@@ -145,6 +155,7 @@ const DK = {
     if (yol.indexOf("/api/kaydet/") === 0) { const ad = yol.slice("/api/kaydet/".length); return DK.jsonYaz(ad, typeof govde === "string" ? govde : JSON.stringify(govde), (ekBaslik || {})["X-Surum"]); }
     if (yol === "/api/ac") return DK.ac((govde || {}).yol).then(() => ({}));
     if (yol === "/api/kisi-belgeler") { const g = govde || {}; return DK.kisiBelgeler(g.ad, g.sirket); }
+    if (yol === "/api/klasor-belgeler") { return DK.klasorListe((govde || {}).klasor); }
     if (yol === "/api/excel") throw new Error("İzin formu (Excel) çıktısı Chrome sürümüne yakında eklenecek. Şimdilik İsper formları ve program çalışıyor.");
     if (yol === "/api/word") throw new Error("Çırak izin kâğıdı (Word) çıktısı Chrome sürümüne yakında eklenecek.");
     throw new Error("Bilinmeyen istek: " + yol);
