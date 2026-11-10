@@ -761,9 +761,24 @@ async function izinFormu(id) {
   const iz = V.izinler.find(i => i.id === id), p = iz && personelBul(iz.personelId);
   if (!iz || !p) { bildir("İzin ya da personel bulunamadı.", true); return; }
   if (iz.tur === RAPOR) { bildir("Sağlık raporu için izin formu hazırlanmaz.", true); return; }
-  if (isperMi(p)) { isperFormu(iz, p); return; }
-  if (cirakMi(p)) { await cirakFormu(iz, p); return; }
-  bogaziciFormu(iz, p);
+  if (isperMi(p)) { isperFormu(iz, p); setTimeout(() => formPaylasPrompt(iz, p), 600); return; }
+  if (cirakMi(p)) { await cirakFormu(iz, p); formPaylasPrompt(iz, p); return; }
+  await bogaziciFormu(iz, p); formPaylasPrompt(iz, p);
+}
+// İzin formu oluşturulunca: hemen WhatsApp'ta paylaşma kutusu (unutmamak için)
+function izinMesaji(iz, p) {
+  return "📋 İZİN BİLGİSİ\n" + (p.ad || "") + "\nTür: " + iz.tur + "\nÇıkış: " + gosterGun(iz.baslangic) + "\nDönüş (işbaşı): " + gosterGun(iz.isBasi) + "\nGün: " + sayi(iz.gun);
+}
+function formPaylasPrompt(iz, p) {
+  const metin = izinMesaji(iz, p);
+  pencereAc(
+    "<h2>✅ İzin formu hazır</h2>" +
+    '<div class="not" style="margin-bottom:8px">İstersen bu bilgiyi hemen WhatsApp grubunda paylaş; böylece unutmazsın. Metni düzenleyebilirsin.</div>' +
+    '<textarea id="fpMetin" style="width:100%;height:150px;box-sizing:border-box;font:13px Consolas,monospace;border:1px solid #9aa9b8;border-radius:6px;padding:8px">' + esc(metin) + "</textarea>" +
+    '<div class="pencere-alt"><button id="fpKapat">Kapat</button><button id="fpKopya">📋 Kopyala</button><button class="ana" id="fpWa">📱 WhatsApp\'ta paylaş</button></div>');
+  $("#fpKapat").onclick = pencereKapat;
+  $("#fpKopya").onclick = () => panoyaKopyala($("#fpMetin").value);
+  $("#fpWa").onclick = () => { const t = $("#fpMetin").value.trim(); if (t) window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank"); };
 }
 
 SAYFALAR.ayarlar = function () {
