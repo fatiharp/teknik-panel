@@ -813,7 +813,12 @@ SAYFALAR.ayarlar = function () {
 
 /* ---------------- Tesisler ---------------- */
 let tesisArama = "", tesisKategori = "";
-const TESIS_KATEGORILER = ["Sosyal Tesis", "Kent Lokantası", "İtfaiye", "Otel / Konaklama"];
+const TESIS_KATEGORILER = ["Sosyal Tesis", "Kent Lokantası", "İtfaiye", "Otel / Konaklama", "Büfe"];
+// Gösterilecek kategoriler verinin kendisinden gelir: önce bilinen sıra, sonra veride olan diğerleri. Sayılar hep otomatik.
+function tesisKategorileri(hepsi) {
+  const varOlan = Array.from(new Set((hepsi || []).map(t => t.kategori || "Diğer")));
+  return TESIS_KATEGORILER.filter(k => varOlan.includes(k)).concat(varOlan.filter(k => !TESIS_KATEGORILER.includes(k)).sort((a, b) => a.localeCompare(b, "tr")));
+}
 SAYFALAR.tesisler = function () {
   $("#icerik").innerHTML =
     '<div class="ust"><h1>Tesisler</h1><input class="ara" id="ara" placeholder="Ara: tesis, amir, dahili, muhasebeci…" value="' + esc(tesisArama) + '"><button class="ana" id="yeni">+ Yeni tesis</button></div>' +
@@ -824,10 +829,11 @@ SAYFALAR.tesisler = function () {
     const a = trKucuk(tesisArama), hepsi = V.tesisler || [];
     const l = hepsi.filter(t => (!tesisKategori || t.kategori === tesisKategori) &&
       (!a || trKucuk([t.ad, t.bagli, t.amir, t.amirDahili, t.amirCep, t.muhasebeci, t.not].join(" ")).includes(a)));
+    const katlar = tesisKategorileri(hepsi);
     $("#kategoriler").innerHTML = '<button data-k=""' + (!tesisKategori ? ' class="secili"' : "") + ">Tümü (" + hepsi.length + ")</button>" +
-      TESIS_KATEGORILER.filter(k => hepsi.some(t => t.kategori === k)).map(k => '<button data-k="' + esc(k) + '"' + (tesisKategori === k ? ' class="secili"' : "") + ">" + k + " (" + hepsi.filter(t => t.kategori === k).length + ")</button>").join("");
+      katlar.map(k => '<button data-k="' + esc(k) + '"' + (tesisKategori === k ? ' class="secili"' : "") + ">" + esc(k) + " (" + hepsi.filter(t => (t.kategori || "Diğer") === k).length + ")</button>").join("");
     $$("#kategoriler [data-k]").forEach(b => b.onclick = () => { tesisKategori = b.dataset.k; ciz(); });
-    const gruplar = TESIS_KATEGORILER.map(k => [k, l.filter(t => t.kategori === k)]).filter(x => x[1].length);
+    const gruplar = katlar.map(k => [k, l.filter(t => (t.kategori || "Diğer") === k)]).filter(x => x[1].length);
     $("#liste").innerHTML = l.length ? gruplar.map(([k, ts]) =>
       '<div class="kutu"><div class="pbas"><h2>' + k + '</h2><span class="not">' + ts.length + " tesis</span></div>" +
       '<table><thead><tr><th>Tesis</th><th>Bağlı</th><th>Amir</th><th>Dahili</th><th>Cep</th><th>Muhasebeci</th><th>Muh. dahili</th><th>Not</th></tr></thead><tbody>' +
@@ -846,10 +852,29 @@ async function envanterListele() {
   try { l = await api("/api/klasor-belgeler", { klasor: "9-TESİS ENVANTER" }); } catch (e) { kutu.innerHTML = '<h2>📁 Envanter dosyaları</h2><div class="eksi">' + esc(e.message) + "</div>"; return; }
   l.sort((a, b) => a.ad.localeCompare(b.ad, "tr"));
   kutu.innerHTML = "<h2>📁 Envanter dosyaları (" + l.length + ")</h2>" +
-    '<div class="not" style="margin-bottom:6px">Tesis envanterleri, kombi/VRF kayıtları, kuver ve itfaiye listeleri. Tıkla, Excel\'de açılır.</div>' +
+    '<div class="not" style="margin-bottom:6px">Tesis envanterleri, kombi/VRF kayıtları, kuver ve itfaiye listeleri. Satıra tıkla → Excel\'de açılır. İçeriğini değiştirmek için Excel\'de aç, kaydet.</div>' +
     (l.length ? '<div style="max-height:260px;overflow:auto;border:1px solid var(--cizgi);border-radius:8px"><table><tbody>' + l.map((b, n) =>
-      '<tr class="tikla" data-e="' + n + '"><td style="width:28px">' + belgeSimge(b.ad) + "</td><td>" + esc(b.ad) + '</td><td class="not" style="white-space:nowrap">' + goster(b.tarih) + "</td></tr>").join("") + "</tbody></table></div>" : '<div class="not">Dosya yok.</div>');
+      '<tr><td class="tikla" data-e="' + n + '" style="width:28px">' + belgeSimge(b.ad) + '</td><td class="tikla" data-e="' + n + '">' + esc(b.ad) + '</td><td class="not" style="white-space:nowrap">' + goster(b.tarih) +
+      '</td><td class="sag" style="width:44px"><button class="kucuk tehlike" data-esil="' + n + '" title="Sil (dosya kalıcı silinir)">🗑</button></td></tr>').join("") + "</tbody></table></div>" : '<div class="not">Dosya yok.</div>') +
+    '<div id="envBirak" style="margin-top:8px;padding:12px;border:2px dashed #9cb3cc;border-radius:8px;text-align:center;background:#f7fafd" class="not">📎 Yeni envanter dosyası eklemek için buraya sürükle ya da <label style="color:var(--mavi);text-decoration:underline;cursor:pointer">dosya seç<input type="file" id="envDosya" multiple hidden></label></div>';
   $$("#envanterKutu [data-e]").forEach(x => x.onclick = () => belgeAc(l[+x.dataset.e].yol));
+  $$("#envanterKutu [data-esil]").forEach(x => x.onclick = async () => {
+    const b = l[+x.dataset.esil];
+    if (!confirm("Bu envanter dosyası silinsin mi?\n\n" + b.ad + "\n\n⚠ Dosya KALICI olarak silinir, geri alınamaz.")) return;
+    try { await DK.dosyaSil(b.yol); bildir("Dosya silindi."); } catch (e) { bildir("Silinemedi: " + e.message, true); }
+    envanterListele();
+  });
+  const yukle = async dosyalar => {
+    let n = 0;
+    for (const d of Array.from(dosyalar || [])) {
+      try { const r = await DK.dosyaYazResp("9-TESİS ENVANTER\\" + dosyaAdi(d.name), d); const j = await r.json(); if (!r.ok || j.hata) throw new Error(j.hata || "yazılamadı"); n++; }
+      catch (e) { bildir(d.name + " eklenemedi: " + e.message, true); }
+    }
+    if (n) { bildir(n + " dosya eklendi."); envanterListele(); }
+  };
+  const ed = $("#envDosya"); if (ed) ed.onchange = e => { yukle(e.target.files); e.target.value = ""; };
+  const z = $("#envBirak");
+  if (z) { z.ondragover = e => { e.preventDefault(); z.style.background = "#e3effb"; }; z.ondragleave = () => { z.style.background = "#f7fafd"; }; z.ondrop = e => { e.preventDefault(); z.style.background = "#f7fafd"; yukle(e.dataTransfer.files); }; }
 }
 function tesisPencere(id) {
   const t = id ? (V.tesisler.find(x => x.id === id) || {}) : { id: 0, kategori: "Sosyal Tesis", ad: "", bagli: "", tur: "", amir: "", amirDahili: "", amirCep: "", muhasebeci: "", muhDahili: "", not: "" };
@@ -857,7 +882,7 @@ function tesisPencere(id) {
   pencereAc(
     "<h2>" + (id ? esc(t.ad) : "Yeni tesis") + "</h2>" +
     '<form id="tf" class="form" autocomplete="off">' +
-    '<div><label>Kategori</label><select name="kategori">' + TESIS_KATEGORILER.map(k => "<option" + (k === t.kategori ? " selected" : "") + ">" + k + "</option>").join("") + "</select></div>" +
+    '<div><label>Kategori</label><select name="kategori">' + Array.from(new Set(TESIS_KATEGORILER.concat((V.tesisler || []).map(x => x.kategori)).concat([t.kategori]).filter(Boolean))).map(k => "<option" + (k === (t.kategori || "Sosyal Tesis") ? " selected" : "") + ">" + esc(k) + "</option>").join("") + "</select></div>" +
     alan("ad", "Tesis adı *") + alan("bagli", "Bağlı (kent lokantası / sosyal tesis / konum)") + alan("tur", "Tür (otel, kafeterya…)") +
     alan("amir", "Tesis amiri") + alan("amirDahili", "Amir dahili") + alan("amirCep", "Amir cep") + alan("muhasebeci", "Muhasebeci") + alan("muhDahili", "Muhasebeci dahili") +
     alan("not", "Not", true) + "</form>" +
