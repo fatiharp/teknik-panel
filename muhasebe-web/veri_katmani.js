@@ -122,6 +122,16 @@ const DK = {
     }
   },
 
+  /* ---- dosyayı kalıcı sil (Fatih böyle istedi; tarayıcı Windows Çöp Kutusu'na atamaz, geri alınamaz).
+     Sadece seçilen TEKNİK PANEL klasörünün içindeki DOSYALARI siler, klasör silmez. Dosya zaten yoksa false. */
+  async dosyaSil(yol) {
+    let t;
+    try { t = await DK.dosyaTutamac(DK.kokRel(yol), false); } catch (e) { return false; }
+    await t.dizin.removeEntry(t.ad);
+    return true;
+  },
+  ayniYol(a, b) { return DK.kokRel(a).toLocaleUpperCase("tr-TR") === DK.kokRel(b).toLocaleUpperCase("tr-TR"); },
+
   /* ---- eski api() çağrılarını buraya yönlendiriyoruz ---- */
   async api(yol, govde, ekBaslik) {
     if (DK.demo) return DK.demoApi(yol, govde, ekBaslik);

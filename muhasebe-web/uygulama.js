@@ -215,7 +215,7 @@ async function kisiBelgeleri(p) {
         " (" + l.filter(b => b.grup === g).length + ")</button>").join("") + "</div>" +
       (secili.length ? '<div style="max-height:240px;overflow:auto;border:1px solid var(--cizgi);border-radius:8px"><table><tbody>' + secili.map((b, n) =>
         '<tr class="tikla" data-b="' + n + '"><td style="width:28px">' + belgeSimge(b.ad) + "</td><td>" + esc(b.ad) +
-        (b.alt && b.alt !== b.grup ? '<div class="not">' + esc(b.alt.replace(b.grup + "\\", "")) + "</div>" : "") + '</td><td class="not" style="white-space:nowrap">' + goster(b.tarih) + "</td></tr>").join("") + "</tbody></table></div>"
+        (b.alt && b.alt !== b.grup ? '<div class="not">' + esc(b.alt.replace(b.grup + "\\", "")) + "</div>" : "") + '</td><td class="not" style="white-space:nowrap">' + goster(b.tarih) + '</td><td class="sag" style="width:44px"><button class="kucuk tehlike" data-bsl="' + n + '" title="Sil (dosya kalıcı silinir)">🗑</button></td></tr>').join("") + "</tbody></table></div>"
         : '<div class="not" style="padding:8px 0">' + (c.klasor ? "Bu bölümde belge yok." : "Bu kişinin henüz klasörü yok; ilk belgeyi eklediğinde oluşur.") + "</div>") +
       (belgeGrubu === "RAPOR" ? '<div class="form" style="grid-template-columns:1fr 1fr;margin-top:8px"><div><label>Rapor başlangıç tarihi</label><input type="date" id="bRTarih" value="' + esc(rv.t) + '"></div>' +
         '<div><label>Kaç gün</label><input type="number" id="bRGun" min="0.5" step="0.5" value="' + esc(rv.g) + '"></div>' +
@@ -224,6 +224,19 @@ async function kisiBelgeleri(p) {
       "📎 <b>" + (belgeGrubu || "Diğer") + '</b> bölümüne belge eklemek için dosyaları buraya sürükle ya da <label style="color:var(--mavi);text-decoration:underline;cursor:pointer">dosya seç<input type="file" id="bDosya" multiple hidden></label></div>';
     $$("[data-bg]", kutu).forEach(b => b.onclick = () => { belgeGrubu = b.dataset.bg; ciz(); });
     $$("[data-b]", kutu).forEach(t => t.onclick = () => belgeAc(secili[+t.dataset.b].yol));
+    $$("[data-bsl]", kutu).forEach(x => x.onclick = async ev => {
+      ev.stopPropagation();
+      const b = secili[+x.dataset.bsl];
+      const bagli = V.izinler.filter(i => (i.belgeler || []).some(y => y.yol && DK.ayniYol(y.yol, b.yol)));
+      if (!confirm("Bu belge silinsin mi?\n\n" + b.ad + (bagli.length ? "\n\nBu dosya " + bagli.length + " izin kaydına bağlı; o kayıtlardan çıkarılacak (izin kayıtlarının kendisi silinmez)." : "") +
+        "\n\n⚠ Dosya kişinin klasöründen KALICI olarak silinir, geri alınamaz.")) return;
+      try {
+        if (bagli.length) { bagli.forEach(i => { i.belgeler = i.belgeler.filter(y => !(y.yol && DK.ayniYol(y.yol, b.yol))); }); if (!(await kaydet("izinler"))) return; }
+        await DK.dosyaSil(b.yol);
+        bildir("Belge silindi.");
+      } catch (e) { bildir("Silinemedi: " + e.message, true); }
+      kisiBelgeleri(p);
+    });
     if (c.klasor) $("#bKlasor").onclick = () => belgeAc(c.klasor);
     if (belgeGrubu === "RAPOR") {
       const guncelle = () => { rv.t = $("#bRTarih").value; rv.g = +$("#bRGun").value || 1; $("#bROrnek").textContent = raporOrnek(); };
@@ -448,9 +461,19 @@ function izinPencere(id, pidVarsayilan) {
   belgeOlaylari(iz, () => { izinPencere(id); git(); });
   $("#izIptal").onclick = pencereKapat;
   if (id) $("#izSil").onclick = async () => {
-    if (!confirm("Bu izin kaydı silinsin mi?")) return;
+    const dosyalar = (iz.belgeler || []).map(b => b.yol).filter(Boolean);
+    if (!confirm("Bu izin kaydı silinsin mi?" + (dosyalar.length ? "\n\nBağlı " + dosyalar.length + " dosya da kişinin klasöründen kaldırılacak:\n• " +
+      dosyalar.map(y => y.split("\\").pop()).join("\n• ") + "\n\n⚠ Dosyalar KALICI olarak silinir, geri alınamaz." : ""))) return;
     V.izinler = V.izinler.filter(i => i.id !== id);
-    if (await kaydet("izinler")) { pencereKapat(); bildir("İzin silindi."); git(); }
+    if (!(await kaydet("izinler"))) return;
+    let tasinan = 0, hata = "";
+    for (const y of dosyalar) {
+      if (belgeKullaniliyor(y)) continue;  // başka bir izin de bu dosyayı gösteriyorsa dokunma
+      try { if (await DK.dosyaSil(y)) tasinan++; } catch (e) { hata = e.message; }
+    }
+    pencereKapat(); git();
+    if (hata) bildir("İzin silindi ama bazı dosyalar silinemedi: " + hata, true);
+    else bildir("İzin silindi" + (tasinan ? "; " + tasinan + " dosya da silindi." : "."));
   };
   async function kaydetIzin(formDa) {
     const pid = +g("personelId"), gun = +g("gun");
@@ -514,18 +537,26 @@ function belgeBolumu(iz) {
   const l = iz.belgeler || [];
   return '<h2 style="margin-top:16px">Belgeler</h2>' +
     (l.length ? "<table><tbody>" + l.map((b, n) => "<tr><td>" + (b.tur === "İmzalı form" ? "✅ " : "📄 ") + esc(b.tur) + '</td><td class="not">' + esc(b.yol.split("\\").pop()) +
-      '</td><td class="sag" style="white-space:nowrap"><button class="kucuk" data-bac="' + n + '">Aç</button> <button class="kucuk tehlike" data-bsil="' + n + '" title="Kayıttan çıkar (dosya silinmez)">✕</button></td></tr>').join("") + "</tbody></table>"
+      '</td><td class="sag" style="white-space:nowrap"><button class="kucuk" data-bac="' + n + '">Aç</button> <button class="kucuk tehlike" data-bsil="' + n + '" title="Sil (dosya kalıcı silinir)">✕</button></td></tr>').join("") + "</tbody></table>"
       : '<div class="not">Bu izne bağlı belge yok.</div>') +
     '<div id="birak" style="margin-top:10px;padding:14px;border:2px dashed #9cb3cc;border-radius:8px;text-align:center;background:#f7fafd">' +
     '📎 Taranmış <b>imzalı izin formunu</b> buraya sürükle ya da <label style="color:var(--mavi);text-decoration:underline;cursor:pointer">dosya seç<input type="file" id="bdosya" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.jfif" hidden></label></div>';
 }
+// Bir dosyayı hâlâ bir izin kaydı gösteriyor mu? (silmeden önce bakılır)
+function belgeKullaniliyor(yol) { return V.izinler.some(i => (i.belgeler || []).some(b => b.yol && DK.ayniYol(b.yol, yol))); }
 function belgeOlaylari(iz, yenile) {
   if (!iz.id) return;
   $$("[data-bac]").forEach(b => b.onclick = () => belgeAc(iz.belgeler[+b.dataset.bac].yol));
   $$("[data-bsil]").forEach(b => b.onclick = async () => {
-    if (!confirm("Bu belge izin kaydından çıkarılsın mı? (Dosyanın kendisi silinmez.)")) return;
+    const bel = iz.belgeler[+b.dataset.bsil];
+    if (!confirm("Bu belge silinsin mi?\n\n" + bel.yol.split("\\").pop() + "\n\n⚠ Dosya kişinin klasöründen KALICI olarak silinir, geri alınamaz.")) return;
     iz.belgeler.splice(+b.dataset.bsil, 1);
-    if (await kaydet("izinler")) yenile();
+    if (!(await kaydet("izinler"))) return;
+    if (!belgeKullaniliyor(bel.yol)) {
+      try { await DK.dosyaSil(bel.yol); bildir("Belge silindi."); }
+      catch (e) { bildir("Kayıttan çıkarıldı ama dosya silinemedi: " + e.message, true); }
+    } else bildir("Belge bu izinden çıkarıldı (başka bir izin de kullandığı için dosya yerinde bırakıldı).");
+    yenile();
   });
   const yukle = async f => { if (f && await belgeYukle(iz.id, f)) yenile(); };
   $("#bdosya").onchange = e => yukle(e.target.files[0]);
