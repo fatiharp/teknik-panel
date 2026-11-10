@@ -2,7 +2,8 @@
    Veriler sunucu.ps1 üzerinden Belgeler\TeknikPanel\veri\*.json dosyalarında tutulur. */
 "use strict";
 
-const V = { personel: [], izinler: [], bakiye: [], tatiller: [], ayarlar: {} };
+const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], ayarlar: {} };
+const GIRIS_LINK = "https://giris.ibb.istanbul/";
 let BILGI = {};
 const IZIN_TURLERI = ["YILLIK İZİN", "ÜCRETSİZ İZİN", "FAZLA MESAİ İZNİ", "DİĞER İZİN / İDARİ İZİN", "ÖLÜM İZNİ", "EVLİLİK İZNİ", "BABALIK İZNİ", "MAZERET İZNİ", "SAĞLIK RAPORU"];
 // Bu türlerde gün sayısı takvim günüdür (hafta sonu ve tatiller izne eklenmez)
@@ -295,6 +296,12 @@ function personelPencere(id) {
       ? '<table><thead><tr><th>Tür</th><th>Başlangıç</th><th class="sag">Gün</th><th>İş başı</th><th>Durum</th></tr></thead><tbody>' +
         gecmis.map(i => { const d = izinDurumu(i); return '<tr class="tikla" data-izin="' + i.id + '"><td>' + esc(i.tur) + "</td><td>" + goster(i.baslangic) + '</td><td class="sag">' + sayi(i.gun) + "</td><td>" + goster(i.isBasi) + '</td><td><span class="rozet ' + d.sinif + '">' + d.ad + "</span>" + (imzaliBelge(i) ? " 📎" : "") + "</td></tr>"; }).join("") + "</tbody></table>"
       : '<div class="not">Kayıtlı izin yok.</div>') : "") +
+    (id ? (function () { const gr = V.giris.find(x => x.personelId === id) || {};
+      return '<h2 style="margin-top:16px">🔐 İBB sistem girişi (mesai takibi)</h2>' +
+        '<div class="form"><div><label>Kullanıcı adı</label><input name="g_kullanici" value="' + esc(gr.kullanici || "") + '" autocomplete="off"></div>' +
+        '<div><label>Şifre</label><div style="display:flex;gap:6px"><input name="g_sifre" type="password" value="' + esc(gr.sifre || "") + '" autocomplete="new-password" style="flex:1"><button type="button" class="kucuk" id="gGoster">👁 Göster</button></div></div>' +
+        '<div class="tam"><a href="' + GIRIS_LINK + '" target="_blank" rel="noopener" class="ana" style="display:inline-block;text-decoration:none;padding:9px 16px">🔗 Giriş sayfasını aç (giris.ibb.istanbul)</a>' +
+        ' <span class="not">Sayfa açılır, bilgileri buradan kopyalayıp girişini kendin yaparsın. Bu bilgiler bu bilgisayarda kalır, internete gitmez.</span></div></div>'; })() : "") +
     (id ? '<div id="pBelge" style="margin-top:16px"><h2>📁 Belgeler</h2><div class="not">Yükleniyor…</div></div>' : "") +
     '<div class="pencere-alt">' + (id ? '<button class="sol" id="pIzin">+ Bu kişiye izin gir</button>' : "") +
     '<button id="pIptal">Vazgeç</button><button class="ana" id="pKaydet">Kaydet</button></div>');
@@ -302,6 +309,7 @@ function personelPencere(id) {
   if (id) {
     $("#pIzin").onclick = () => izinPencere(null, id);
     $$("#pencereKutu [data-izin]").forEach(t => t.onclick = () => izinPencere(+t.dataset.izin));
+    const gg = $("#gGoster"); if (gg) gg.onclick = () => { const i = $("[name=g_sifre]"); i.type = i.type === "password" ? "text" : "password"; gg.textContent = i.type === "password" ? "👁 Göster" : "🙈 Gizle"; };
     kisiBelgeleri(p);
   }
   $("#pKaydet").onclick = async () => {
@@ -324,7 +332,18 @@ function personelPencere(id) {
         bakiyeDegisti = true;
       }
     }
-    if (await kaydet("personel") && (!bakiyeDegisti || await kaydet("bakiye"))) { pencereKapat(); bildir("Kaydedildi."); git(); }
+    let girisDegisti = false;
+    if (id) {
+      const gkEl = $("[name=g_kullanici]"), gsEl = $("[name=g_sifre]");
+      const gk = gkEl ? gkEl.value.trim() : "", gs = gsEl ? gsEl.value : "", i = V.giris.findIndex(x => x.personelId === id);
+      const mevcut = i >= 0 ? V.giris[i] : null;
+      if ((mevcut ? mevcut.kullanici : "") !== gk || (mevcut ? mevcut.sifre : "") !== gs) {
+        if (gk || gs) { const kayit = { personelId: id, kullanici: gk, sifre: gs }; if (i >= 0) V.giris[i] = kayit; else V.giris.push(kayit); }
+        else if (i >= 0) V.giris.splice(i, 1);
+        girisDegisti = true;
+      }
+    }
+    if (await kaydet("personel") && (!bakiyeDegisti || await kaydet("bakiye")) && (!girisDegisti || await kaydet("giris"))) { pencereKapat(); bildir("Kaydedildi."); git(); }
   };
 }
 

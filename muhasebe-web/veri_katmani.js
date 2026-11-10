@@ -9,7 +9,7 @@
 const DK = {
   handle: null,
   demo: false,
-  KOKLER: { personel: [], izinler: [], bakiye: [], tatiller: [], saha: [], ayarlar: {} },
+  KOKLER: { personel: [], izinler: [], bakiye: [], tatiller: [], saha: [], giris: [], ayarlar: {} },
 
   /* ---- klasör gezinme yardımcıları (yol: "4-PERSONEL\\BOĞAZİÇİ\\AD\\İZİN\\2026") ---- */
   // Eski program belge yollarını TAM yol yazıyordu (C:\...\TEKNİK PANEL\4-PERSONEL\...).
