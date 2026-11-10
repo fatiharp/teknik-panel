@@ -637,8 +637,8 @@ async function bogaziciFormu(iz, p) {
     if (!r.ok) throw new Error(c.hata || "kaydedilemedi");
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = dad;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    a.style.display = "none"; document.body.appendChild(a); a.click();
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
     if (!(iz.belgeler || []).some(x => x.yol === hedef)) { iz.belgeler = (iz.belgeler || []).concat([{ tur: "Excel form", yol: hedef, tarih: bugun() }]); await kaydet("izinler"); }
     bildir("İzin formu kişinin İZİN klasörüne kaydedildi ve indirildi.");
   } catch (e) { bildir("İzin formu hazırlanamadı: " + e.message, true); }

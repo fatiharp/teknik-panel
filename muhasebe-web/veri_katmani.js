@@ -12,7 +12,17 @@ const DK = {
   KOKLER: { personel: [], izinler: [], bakiye: [], tatiller: [], saha: [], ayarlar: {} },
 
   /* ---- klasör gezinme yardımcıları (yol: "4-PERSONEL\\BOĞAZİÇİ\\AD\\İZİN\\2026") ---- */
-  parcala(yol) { return String(yol || "").split(/[\\/]+/).filter(Boolean); },
+  // Eski program belge yollarını TAM yol yazıyordu (C:\...\TEKNİK PANEL\4-PERSONEL\...).
+  // Seçilen TEKNİK PANEL klasörüne göre göreli hale getir; zaten göreliyse dokunma.
+  kokRel(yol) {
+    const y = String(yol || "").replace(/\//g, "\\");
+    const isaret = "TEKNİK PANEL\\";
+    const i = y.indexOf(isaret);
+    if (i >= 0) return y.slice(i + isaret.length);
+    const m = /(?:^|\\)(\d-[^\\]*(?:\\.*)?)$/.exec(y);
+    return m ? m[1] : y;
+  },
+  parcala(yol) { return DK.kokRel(yol).split(/[\\/]+/).filter(Boolean); },
   async dizin(yol, olustur) {
     let h = DK.handle;
     for (const p of DK.parcala(yol)) h = await h.getDirectoryHandle(p, { create: !!olustur });
@@ -40,9 +50,14 @@ const DK = {
     sonuc._surum = surum;
     return sonuc;
   },
-  async jsonYaz(ad, metin) {
+  async jsonYaz(ad, metin, surum) {
     const d = await DK.dizin("2-KAYITLAR", true);
     const fh = await d.getFileHandle(ad + ".json", { create: true });
+    // Ekrandaki bilgi eskiyse (dosya bu arada başka yerden değiştiyse) üstüne yazma
+    if (surum && surum !== "yok" && surum !== "0") {
+      const simdiki = String((await fh.getFile()).lastModified);
+      if (simdiki !== String(surum)) throw new Error("Kayıtlar bu arada başka yerden değişmiş. Değişikliğin karışmasın diye kaydetmedim; sayfayı yenile (Ctrl+Shift+R) ve tekrar dene.");
+    }
     const w = await fh.createWritable(); await w.write(new Blob([metin], { type: "application/json" })); await w.close();
     const f = await fh.getFile();
     return { surum: String(f.lastModified) };
@@ -104,7 +119,7 @@ const DK = {
       personelKlasoru: "4-PERSONEL", varsayilanIzinKlasoru: "4-PERSONEL"
     };
     if (yol === "/api/ping") return {};
-    if (yol.indexOf("/api/kaydet/") === 0) { const ad = yol.slice("/api/kaydet/".length); return DK.jsonYaz(ad, typeof govde === "string" ? govde : JSON.stringify(govde)); }
+    if (yol.indexOf("/api/kaydet/") === 0) { const ad = yol.slice("/api/kaydet/".length); return DK.jsonYaz(ad, typeof govde === "string" ? govde : JSON.stringify(govde), (ekBaslik || {})["X-Surum"]); }
     if (yol === "/api/ac") return DK.ac((govde || {}).yol).then(() => ({}));
     if (yol === "/api/kisi-belgeler") { const g = govde || {}; return DK.kisiBelgeler(g.ad, g.sirket); }
     if (yol === "/api/excel") throw new Error("İzin formu (Excel) çıktısı Chrome sürümüne yakında eklenecek. Şimdilik İsper formları ve program çalışıyor.");
