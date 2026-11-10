@@ -3,7 +3,14 @@
 "use strict";
 
 const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], ayarlar: {} };
-const GIRIS_LINK = "https://giris.ibb.istanbul/";
+const GIRIS_LINK = "https://personel.ibb.istanbul/";
+async function panoyaKopyala(metin, dugme) {
+  if (!metin) { bildir("Kopyalanacak bir şey yok.", true); return; }
+  try { await navigator.clipboard.writeText(metin); }
+  catch (e) { const t = document.createElement("textarea"); t.value = metin; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e2) {} t.remove(); }
+  if (dugme) { const e = dugme.textContent; dugme.textContent = "✓"; setTimeout(() => { dugme.textContent = e; }, 1200); }
+  bildir("Kopyalandı.");
+}
 let BILGI = {};
 const IZIN_TURLERI = ["YILLIK İZİN", "ÜCRETSİZ İZİN", "FAZLA MESAİ İZNİ", "DİĞER İZİN / İDARİ İZİN", "ÖLÜM İZNİ", "EVLİLİK İZNİ", "BABALIK İZNİ", "MAZERET İZNİ", "SAĞLIK RAPORU"];
 // Bu türlerde gün sayısı takvim günüdür (hafta sonu ve tatiller izne eklenmez)
@@ -298,9 +305,9 @@ function personelPencere(id) {
       : '<div class="not">Kayıtlı izin yok.</div>') : "") +
     (id ? (function () { const gr = V.giris.find(x => x.personelId === id) || {};
       return '<h2 style="margin-top:16px">🔐 İBB sistem girişi (mesai takibi)</h2>' +
-        '<div class="form"><div><label>Kullanıcı adı</label><input name="g_kullanici" value="' + esc(gr.kullanici || "") + '" autocomplete="off"></div>' +
-        '<div><label>Şifre</label><div style="display:flex;gap:6px"><input name="g_sifre" type="password" value="' + esc(gr.sifre || "") + '" autocomplete="new-password" style="flex:1"><button type="button" class="kucuk" id="gGoster">👁 Göster</button></div></div>' +
-        '<div class="tam"><a href="' + GIRIS_LINK + '" target="_blank" rel="noopener" class="ana" style="display:inline-block;text-decoration:none;padding:9px 16px">🔗 Giriş sayfasını aç (giris.ibb.istanbul)</a>' +
+        '<div class="form"><div><label>Kullanıcı adı</label><div style="display:flex;gap:6px"><input name="g_kullanici" value="' + esc(gr.kullanici || "") + '" autocomplete="off" style="flex:1"><button type="button" class="kucuk" id="gKopyaK" title="Kullanıcı adını kopyala">📋</button></div></div>' +
+        '<div><label>Şifre</label><div style="display:flex;gap:6px"><input name="g_sifre" type="password" value="' + esc(gr.sifre || "") + '" autocomplete="new-password" style="flex:1"><button type="button" class="kucuk" id="gKopyaS" title="Şifreyi kopyala">📋</button><button type="button" class="kucuk" id="gGoster">👁 Göster</button></div></div>' +
+        '<div class="tam"><a href="' + GIRIS_LINK + '" target="_blank" rel="noopener" class="ana" style="display:inline-block;text-decoration:none;padding:9px 16px">🔗 Giriş sayfasını aç (personel.ibb.istanbul)</a>' +
         ' <span class="not">Sayfa açılır, bilgileri buradan kopyalayıp girişini kendin yaparsın. Bu bilgiler bu bilgisayarda kalır, internete gitmez.</span></div></div>'; })() : "") +
     (id ? '<div id="pBelge" style="margin-top:16px"><h2>📁 Belgeler</h2><div class="not">Yükleniyor…</div></div>' : "") +
     '<div class="pencere-alt">' + (id ? '<button class="sol" id="pIzin">+ Bu kişiye izin gir</button>' : "") +
@@ -310,6 +317,8 @@ function personelPencere(id) {
     $("#pIzin").onclick = () => izinPencere(null, id);
     $$("#pencereKutu [data-izin]").forEach(t => t.onclick = () => izinPencere(+t.dataset.izin));
     const gg = $("#gGoster"); if (gg) gg.onclick = () => { const i = $("[name=g_sifre]"); i.type = i.type === "password" ? "text" : "password"; gg.textContent = i.type === "password" ? "👁 Göster" : "🙈 Gizle"; };
+    const gkk = $("#gKopyaK"); if (gkk) gkk.onclick = () => panoyaKopyala($("[name=g_kullanici]").value, gkk);
+    const gks = $("#gKopyaS"); if (gks) gks.onclick = () => panoyaKopyala($("[name=g_sifre]").value, gks);
     kisiBelgeleri(p);
   }
   $("#pKaydet").onclick = async () => {
