@@ -144,8 +144,9 @@ SAYFALAR.ana = function () {
     '<div class="kutu"><h2>Yaklaşan izinler (14 gün)</h2>' + (yaklasan.length
       ? '<table><thead><tr><th>Personel</th><th>İzin türü</th><th>Başlangıç</th></tr></thead><tbody>' + yaklasan.map(i => satir(i, gosterGun(i.baslangic))).join("") + "</tbody></table>"
       : '<div class="not">Yaklaşan izin yok.</div>') + "</div>" +
-    '<button class="ana" id="yeniIzin">+ Yeni izin gir</button>';
+    '<button class="ana" id="yeniIzin">+ Yeni izin gir</button> <button id="wpDonus">📱 İzin dönüşlerini WhatsApp\'ta paylaş</button>';
   $("#yeniIzin").onclick = () => izinPencere(null);
+  $("#wpDonus").onclick = () => izinDonusPenceresi();
   $$("[data-izin]").forEach(t => t.onclick = () => izinPencere(+t.dataset.izin));
 };
 
@@ -810,6 +811,40 @@ SAYFALAR.ayarlar = function () {
   $("#vAc").onclick = () => api("/api/ac", { yol: BILGI.veriKlasoru }).catch(e => bildir(e.message, true));
   tCiz();
 };
+
+/* ---------------- İzin dönüşlerini WhatsApp'ta paylaş ----------------
+   WhatsApp gruba otomatik mesaj atılamaz (API yok); program metni hazırlar,
+   WhatsApp'ı hazır metinle açar, kullanıcı grubu seçip gönderir. */
+function izinDonusPenceresi() {
+  pencereAc(
+    "<h2>📱 İzin dönüşlerini paylaş</h2>" +
+    '<div class="form" style="grid-template-columns:repeat(2,1fr)"><div><label>İşbaşı tarihi</label><input type="date" id="wpTarih" value="' + bugun() + '"></div>' +
+    '<div><label>Kapsam</label><select id="wpKapsam"><option value="gun">Sadece seçili gün</option><option value="hafta">Bugünden itibaren 7 gün</option></select></div></div>' +
+    '<div class="tam" style="margin-top:8px"><label>Mesaj (düzenleyebilirsin)</label><textarea id="wpMetin" style="width:100%;height:190px;box-sizing:border-box;font:13px Consolas,monospace;border:1px solid #9aa9b8;border-radius:6px;padding:8px"></textarea></div>' +
+    '<div class="pencere-alt"><button id="wpIptal">Kapat</button><button id="wpKopya">📋 Kopyala</button><button class="ana" id="wpAc">📱 WhatsApp\'ta aç</button></div>');
+  const olustur = () => {
+    const g = $("#wpTarih").value, kapsam = $("#wpKapsam").value;
+    if (!g) { $("#wpMetin").value = ""; return; }
+    let liste;
+    if (kapsam === "hafta") { const son = gunEkle(g, 6); liste = V.izinler.filter(i => i.isBasi >= g && i.isBasi <= son); }
+    else liste = V.izinler.filter(i => i.isBasi === g);
+    liste = liste.filter(i => i.tur !== RAPOR || true).sort((a, c) => a.isBasi < c.isBasi ? -1 : 1);
+    let m = "📋 İZİN DÖNÜŞLERİ\n";
+    if (kapsam === "hafta") m += goster(g) + " – " + goster(gunEkle(g, 6)) + "\n\n"; else m += gosterGun(g) + "\n\n";
+    if (!liste.length) m += "Bu tarihlerde işbaşı yapan personel yok.";
+    else if (kapsam === "hafta") {
+      const gunler = Array.from(new Set(liste.map(i => i.isBasi)));
+      m += gunler.map(gn => gosterGun(gn) + " işbaşı:\n" + liste.filter(i => i.isBasi === gn).map(i => { const p = personelBul(i.personelId) || {}; return "• " + p.ad + " (" + i.tur.toLocaleLowerCase("tr-TR") + ")"; }).join("\n")).join("\n\n");
+    } else {
+      m += "Bugün işbaşı yapanlar:\n" + liste.map(i => { const p = personelBul(i.personelId) || {}; return "• " + p.ad + " — " + goster(i.baslangic) + "/" + goster(gunEkle(i.isBasi, -1)) + " " + i.tur.toLocaleLowerCase("tr-TR"); }).join("\n");
+    }
+    $("#wpMetin").value = m;
+  };
+  $("#wpTarih").oninput = olustur; $("#wpKapsam").onchange = olustur; olustur();
+  $("#wpIptal").onclick = pencereKapat;
+  $("#wpKopya").onclick = () => panoyaKopyala($("#wpMetin").value);
+  $("#wpAc").onclick = () => { const t = $("#wpMetin").value.trim(); if (!t) return; window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank"); };
+}
 
 /* ---------------- Tesisler ---------------- */
 let tesisArama = "", tesisKategori = "";

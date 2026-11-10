@@ -104,19 +104,33 @@
 
   // Yeni sürüm uyarısı: GitHub'a yeni sürüm yüklenince açık pencere eski kodla çalışmasın.
   // Her yüklemede surum.txt ile aşağıdaki SURUM aynı değere çıkarılır.
-  const SURUM = "2026-11-10i";
+  const SURUM = "2026-11-10j";
+  async function tamTemizleYenile() {
+    try { if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.unregister(); } } catch (e) {}
+    try { if (window.caches) { const ks = await caches.keys(); for (const k of ks) await caches.delete(k); } } catch (e) {}
+    location.reload();
+  }
   function yeniSurumGoster() {
     if (document.getElementById("yeniSurum")) return;
     const d = document.createElement("div");
     d.id = "yeniSurum";
     d.innerHTML = "🔄 Programın yeni sürümü var. <b>Yenilemek için tıkla</b>";
     d.style.cssText = "position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:100;background:#1F4E78;color:#fff;padding:10px 18px;border-radius:10px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);font:15px system-ui,Arial";
-    d.onclick = () => location.reload();
+    d.onclick = tamTemizleYenile;
     document.body.appendChild(d);
   }
   async function surumKontrol() {
     if (location.search.indexOf("demo") >= 0) return;
-    try { const t = (await (await fetch("surum.txt?x=" + Date.now(), { cache: "no-store" })).text()).trim(); if (t && t !== SURUM) yeniSurumGoster(); } catch (e) {}
+    try {
+      const t = (await (await fetch("surum.txt?x=" + Date.now(), { cache: "no-store" })).text()).trim();
+      if (t && t !== SURUM) {
+        const pencereAcik = document.getElementById("pencere") && !document.getElementById("pencere").hidden;
+        let denendi = ""; try { denendi = sessionStorage.getItem("surumYenile") || ""; } catch (e) {}
+        // Pencere/form açık değilse ve bu sürüm için daha önce denemediysek kendiliğinden tam temizleyip yenile
+        if (!pencereAcik && denendi !== t) { try { sessionStorage.setItem("surumYenile", t); } catch (e) {} tamTemizleYenile(); return; }
+        yeniSurumGoster();
+      }
+    } catch (e) {}
   }
   setInterval(surumKontrol, 120000);
   window.addEventListener("focus", surumKontrol);
