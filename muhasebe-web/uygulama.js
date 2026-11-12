@@ -258,7 +258,7 @@ async function kisiBelgeleri(p) {
         const uzanti = (d.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
         const hedef = belgeGrubu === "RAPOR"
           ? klasor + "\\RAPOR\\" + dosyaAdi(raporDosyaAdi(rv.t, p.ad, rv.g || 1)) + uzanti
-          : klasor + (belgeGrubu ? "\\" + belgeGrubu : "") + "\\" + dosyaAdi(d.name);
+          : klasor + (belgeGrubu ? "\\" + belgeGrubu : "") + "\\" + dosyaAdi(belgeDosyaAdi(p.ad, d.name)) + uzanti;
         try {
           const r = await DK.dosyaYazResp(hedef, d);
           const j = await r.json(); if (!r.ok || j.hata) throw new Error(j.hata || r.status); n++;
@@ -568,6 +568,12 @@ function izinDosyaAdi(iz, p) {
 // Rapor dosya adı: "2026.11.10- EREN SARICI - 1 GÜN RAPOR"
 function raporDosyaAdi(bas, ad, gun) { const d = tarihNesne(bas); return d.getFullYear() + "." + iki(d.getMonth() + 1) + "." + iki(d.getDate()) + "- " + ad + " - " + sayi(gun) + " GÜN RAPOR"; }
 function raporKlasoru(p) { return (BILGI.personelKlasoru || "4-PERSONEL") + "\\" + sirketKlasoru(p) + "\\" + dosyaAdi(p.ad) + "\\RAPOR"; }
+// Belgeler bölümüne yüklenen her dosyanın adı: "2026.11.12 - AD SOYAD - <dosya adı>"
+function belgeDosyaAdi(adSoyad, orijinalAd) {
+  const g = new Date(), tarih = g.getFullYear() + "." + iki(g.getMonth() + 1) + "." + iki(g.getDate());
+  const taban = String(orijinalAd || "").replace(/\.[a-z0-9]+$/i, "").trim() || "belge";
+  return tarih + " - " + adSoyad + " - " + taban;
+}
 async function belgeAc(yol) {
   try { await api("/api/ac", { yol }); } catch (e) { bildir("Açılamadı: " + e.message, true); }
 }
