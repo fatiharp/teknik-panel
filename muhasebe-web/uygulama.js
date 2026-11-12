@@ -806,7 +806,11 @@ SAYFALAR.ayarlar = function () {
     '<div class="form" style="grid-template-columns:180px 1fr auto;align-items:end;margin-bottom:10px"><div><label>Tarih</label><input type="date" id="tt"></div><div><label>Adı</label><input id="ta" placeholder="ör. Kurban Bayramı 2. gün"></div><button id="tEkle">Ekle</button></div>' +
     '<div id="tListe"></div></div>' +
     '<div class="kutu"><h2>Verilerin</h2><div class="not">Bütün çalışman tek klasörde: <b>' + esc(BILGI.veriKlasoru) + '</b><br>1-PROGRAM · 2-KAYITLAR (programın kayıtları; her gün otomatik yedek, son 60 gün) · 3-ŞABLONLAR · 4-PERSONEL (her kişinin İZİN, RAPOR, TUTANAK, ÖZLÜK, BORDRO klasörü) · 5-İZİN TAKİP · 6-PUANTAJ VE BORDRO</div>' +
-    '<div style="margin-top:10px"><button id="vAc">Klasörü aç</button></div></div>';
+    '<div style="margin-top:10px"><button id="vAc">Klasörü aç</button></div></div>' +
+    '<div class="kutu"><h2>🔒 Program kilidi</h2><div class="not" id="kilitDurum"></div>' +
+    '<div class="form" style="grid-template-columns:1fr auto;align-items:end;margin-top:8px"><div><label id="kilitEt">Şifre belirle</label><input type="password" id="kSifre" autocomplete="new-password"></div><button class="ana" id="kKaydet">Kaydet</button></div>' +
+    '<div style="margin-top:8px"><button id="kKaldir" class="tehlike">Kilidi kaldır</button></div>' +
+    '<div class="not" style="margin-top:6px">Program açılınca bu şifre sorulur. Şifre yalnızca bu bilgisayarda (şifrelenmiş) saklanır, internete gitmez. Unutursan sıfırlanabilir.</div></div>';
   const yillar = Array.from(new Set(V.tatiller.map(t => +t.tarih.slice(0, 4)).concat([yil, yil + 1]))).sort();
   $("#ty").innerHTML = yillar.map(y => "<option" + (y === yil ? " selected" : "") + ">" + y + "</option>").join("");
   const tCiz = () => {
@@ -832,6 +836,24 @@ SAYFALAR.ayarlar = function () {
     if (await kaydet("ayarlar")) bildir("Ayarlar kaydedildi.");
   };
   $("#vAc").onclick = () => api("/api/ac", { yol: BILGI.veriKlasoru }).catch(e => bildir(e.message, true));
+  const kilitDurumYaz = () => {
+    const d = $("#kilitDurum"); if (d) d.textContent = V.ayarlar.kilit ? "✅ Kilit açık — program açılışta şifre soruyor." : "⚠ Kilit yok — program şifresiz açılıyor.";
+    const et = $("#kilitEt"); if (et) et.textContent = V.ayarlar.kilit ? "Yeni şifre (değiştir)" : "Şifre belirle";
+  };
+  kilitDurumYaz();
+  $("#kKaydet").onclick = async () => {
+    const s = $("#kSifre").value.trim();
+    if (s.length < 3) { bildir("Şifre en az 3 karakter olmalı.", true); return; }
+    const salt = rastgeleSalt(), h = await sifreHashle(s, salt);
+    V.ayarlar = Object.assign({}, V.ayarlar, { kilit: { h, s: salt } });
+    if (await kaydet("ayarlar")) { try { sessionStorage.setItem("kilitAcik", "1"); } catch (e) {} $("#kSifre").value = ""; kilitDurumYaz(); bildir("Program şifresi kaydedildi."); }
+  };
+  $("#kKaldir").onclick = async () => {
+    if (!V.ayarlar.kilit) { bildir("Zaten kilit yok.", true); return; }
+    if (!confirm("Program kilidi kaldırılsın mı? Bundan sonra şifresiz açılır.")) return;
+    const y = Object.assign({}, V.ayarlar); delete y.kilit; V.ayarlar = y;
+    if (await kaydet("ayarlar")) { kilitDurumYaz(); bildir("Kilit kaldırıldı."); }
+  };
   tCiz();
 };
 
@@ -970,8 +992,35 @@ window.baslat = async function () {
     Object.assign(V, veri); BILGI = bilgi;
     if (!V.ayarlar || Array.isArray(V.ayarlar)) V.ayarlar = {};
     tatilYenile();
-    git();
+    if (V.ayarlar && V.ayarlar.kilit && !kilitAcikMi()) kilitEkrani(); else git();
   } catch (e) {
     $("#icerik").innerHTML = '<div class="kutu eksi">Program başlatılamadı: ' + esc(e.message) + "</div>";
   }
 };
+/* ---------------- Program giriş kilidi (basit, yerel) ---------------- */
+async function sifreHashle(sifre, saltHex) {
+  const b = new TextEncoder().encode((saltHex || "") + ":" + sifre);
+  const d = await crypto.subtle.digest("SHA-256", b);
+  return Array.from(new Uint8Array(d)).map(x => x.toString(16).padStart(2, "0")).join("");
+}
+function rastgeleSalt() { const a = new Uint8Array(16); crypto.getRandomValues(a); return Array.from(a).map(x => x.toString(16).padStart(2, "0")).join(""); }
+function kilitAcikMi() { try { return sessionStorage.getItem("kilitAcik") === "1"; } catch (e) { return false; } }
+function kilitEkrani() {
+  let o = document.getElementById("kilit");
+  if (!o) { o = document.createElement("div"); o.id = "kilit"; document.body.appendChild(o); }
+  o.style.cssText = "position:fixed;inset:0;z-index:200;background:#eef3f8;display:flex;align-items:center;justify-content:center;padding:16px";
+  o.innerHTML = '<div style="background:#fff;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.12);padding:26px 28px;max-width:380px;width:100%;text-align:center;font:15px system-ui,Arial">' +
+    '<div style="font-size:40px">🔒</div><div style="color:#1F4E78;font-weight:bold;font-size:20px;margin:4px 0">MUHASEBE</div>' +
+    '<div style="color:#64748b;margin-bottom:10px">Devam etmek için şifreyi gir.</div>' +
+    '<input id="kilitSifre" type="password" style="width:100%;box-sizing:border-box;padding:10px;font-size:16px;border:1px solid #9aa9b8;border-radius:8px;text-align:center" autocomplete="current-password">' +
+    '<div id="kilitHata" style="color:#c0392b;min-height:18px;margin:8px 0;font-size:13px"></div>' +
+    '<button id="kilitGir" style="width:100%;padding:11px;font-size:16px;border:0;border-radius:9px;background:#1F4E78;color:#fff;cursor:pointer">Gir</button></div>';
+  const dene = async () => {
+    const k = V.ayarlar.kilit || {}, h = await sifreHashle(document.getElementById("kilitSifre").value, k.s);
+    if (h === k.h) { try { sessionStorage.setItem("kilitAcik", "1"); } catch (e) {} o.remove(); git(); }
+    else { document.getElementById("kilitHata").textContent = "Şifre yanlış."; const i = document.getElementById("kilitSifre"); i.value = ""; i.focus(); }
+  };
+  document.getElementById("kilitGir").onclick = dene;
+  document.getElementById("kilitSifre").onkeydown = e => { if (e.key === "Enter") dene(); };
+  document.getElementById("kilitSifre").focus();
+}
