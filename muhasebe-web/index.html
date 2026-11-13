@@ -26,6 +26,7 @@
     <a href="#ana" data-sayfa="ana">🏠 Ana Sayfa</a>
     <a href="#personel" data-sayfa="personel">👥 Personel</a>
     <a href="#izinler" data-sayfa="izinler">🏖 İzinler</a>
+    <a href="#mesai" data-sayfa="mesai">⏱ Mesai</a>
     <a href="#tesisler" data-sayfa="tesisler">🏢 Tesisler</a>
     <a href="#ayarlar" data-sayfa="ayarlar">⚙ Ayarlar</a>
   </nav>
@@ -104,7 +105,7 @@
 
   // Yeni sürüm uyarısı: GitHub'a yeni sürüm yüklenince açık pencere eski kodla çalışmasın.
   // Her yüklemede surum.txt ile aşağıdaki SURUM aynı değere çıkarılır.
-  const SURUM = "2026-11-12b";
+  const SURUM = "2026-11-13a";
   async function tamTemizleYenile() {
     try { if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.unregister(); } } catch (e) {}
     try { if (window.caches) { const ks = await caches.keys(); for (const k of ks) await caches.delete(k); } } catch (e) {}

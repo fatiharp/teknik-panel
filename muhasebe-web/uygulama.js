@@ -2,7 +2,7 @@
    Veriler sunucu.ps1 üzerinden Belgeler\TeknikPanel\veri\*.json dosyalarında tutulur. */
 "use strict";
 
-const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], tesisler: [], ayarlar: {} };
+const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], tesisler: [], mesai: [], ayarlar: {} };
 const GIRIS_LINK = "https://personel.ibb.istanbul/";
 async function panoyaKopyala(metin, dugme) {
   if (!metin) { bildir("Kopyalanacak bir şey yok.", true); return; }
@@ -976,6 +976,179 @@ function tesisPencere(id) {
     if (!id) { yeni.id = yeniId(V.tesisler); V.tesisler.push(yeni); } else V.tesisler[V.tesisler.findIndex(x => x.id === id)] = yeni;
     if (await kaydet("tesisler")) { pencereKapat(); bildir("Kaydedildi."); git(); }
   };
+}
+/* ---------------- Mesai (fazla mesai / hafta sonu puantajı) ----------------
+   Kayıt: { id, personelId, tarih:"2026-11-14", durum:"plan"|"geldi"|"gelmedi", saat:7.5, not }
+   Sadece "geldi" olanlar mesai sayılır. */
+const MESAI_SAAT = 7.5;
+let mesaiAy = bugun().slice(0, 7), mesaiGrup = "", mesaiTumGunler = false;
+const KISA_GUN = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"];
+function mesaiKayit(pid, t) { return V.mesai.find(m => m.personelId === pid && m.tarih === t); }
+function mesaiIzinde(pid, t) { return V.izinler.find(i => i.personelId === pid && i.baslangic <= t && i.isBasi > t); }
+function mesaiGunleri(ay, hepsi) {
+  const [y, a] = ay.split("-").map(Number), son = new Date(y, a, 0).getDate(), l = [];
+  for (let g = 1; g <= son; g++) {
+    const t = ay + "-" + iki(g), gun = new Date(y, a - 1, g).getDay(), hs = gun === 0 || gun === 6, tatil = tatilKume.has(t);
+    if (hepsi || hs || tatil || V.mesai.some(m => m.tarih === t)) l.push({ t, g, gun, hs, tatil });
+  }
+  return l;
+}
+function mesaiKisiler() {
+  const ilk = mesaiAy + "-01", son = mesaiAy + "-31";
+  return V.personel.filter(p => (p.aktif || V.mesai.some(m => m.personelId === p.id && m.tarih >= ilk && m.tarih <= son)) && (!mesaiGrup || sirketKlasoru(p) === mesaiGrup))
+    .sort((x, y) => GRUPLAR.findIndex(g => g[0] === sirketKlasoru(x)) - GRUPLAR.findIndex(g => g[0] === sirketKlasoru(y)) || x.ad.localeCompare(y.ad, "tr"));
+}
+function mesaiOzet(pid) {
+  const l = V.mesai.filter(m => m.personelId === pid && m.tarih.startsWith(mesaiAy));
+  const geldi = l.filter(m => m.durum === "geldi");
+  return { gun: geldi.length, saat: geldi.reduce((t, m) => t + (+m.saat || 0), 0), gelmedi: l.filter(m => m.durum === "gelmedi").length, plan: l.filter(m => m.durum === "plan").length };
+}
+SAYFALAR.mesai = function () {
+  const [y, a] = mesaiAy.split("-").map(Number);
+  const gunler = mesaiGunleri(mesaiAy, mesaiTumGunler), kisiler = mesaiKisiler();
+  const aktifHepsi = V.personel.filter(p => p.aktif);
+  const hucre = (p, d) => {
+    const m = mesaiKayit(p.id, d.t), iz = mesaiIzinde(p.id, d.t);
+    let ic = "", stil = "";
+    if (m && m.durum === "geldi") { ic = "✔" + (+m.saat !== MESAI_SAAT ? '<div style="font-size:10px">' + sayi(m.saat) + "s</div>" : ""); stil = "background:#d9f2dc;color:#1e7b34;font-weight:700"; }
+    else if (m && m.durum === "gelmedi") { ic = "✗"; stil = "background:#fde2e2;color:#c0392b;font-weight:700"; }
+    else if (m && m.durum === "plan") { ic = "📋"; stil = "background:#fff4d6"; }
+    else if (iz) { ic = '<span style="font-size:10px;color:#999">' + (iz.tur === RAPOR ? "rapor" : "izin") + "</span>"; }
+    return '<td class="mh" data-p="' + p.id + '" data-t="' + d.t + '" title="' + esc(p.ad) + " · " + goster(d.t) + (m && m.not ? " · " + esc(m.not) : "") + '" style="text-align:center;cursor:pointer;border:1px solid #e3e8ee;min-width:38px;' +
+      (d.hs || d.tatil ? "" : "") + stil + '">' + ic + "</td>";
+  };
+  let grupOnce = "";
+  const satirlar = kisiler.map(p => {
+    const g = sirketKlasoru(p), o = mesaiOzet(p.id);
+    let bas = "";
+    if (!mesaiGrup && g !== grupOnce) { grupOnce = g; bas = '<tr><td colspan="' + (gunler.length + 4) + '" style="background:#eef3f8;font-weight:700;color:#1F4E78;padding:5px 8px">' + ((GRUPLAR.find(x => x[0] === g) || [g, g])[1]) + "</td></tr>"; }
+    return bas + '<tr><td style="white-space:nowrap;padding:4px 8px;border:1px solid #e3e8ee"><b>' + esc(p.ad) + "</b>" + (p.aktif ? "" : ' <span class="not">(ayrıldı)</span>') + "</td>" +
+      gunler.map(d => hucre(p, d)).join("") +
+      '<td style="text-align:center;font-weight:700;border:1px solid #e3e8ee;background:#f3faf4">' + (o.gun || "") + '</td><td style="text-align:center;font-weight:700;border:1px solid #e3e8ee;background:#f3faf4">' + (o.saat ? sayi(o.saat) : "") +
+      '</td><td style="text-align:center;border:1px solid #e3e8ee;color:#c0392b;font-weight:700">' + (o.gelmedi || "") + "</td></tr>";
+  }).join("");
+  const gunGeldi = d => V.mesai.filter(m => m.tarih === d.t && m.durum === "geldi" && kisiler.some(p => p.id === m.personelId)).length;
+  const topGun = kisiler.reduce((t, p) => t + mesaiOzet(p.id).gun, 0), topSaat = kisiler.reduce((t, p) => t + mesaiOzet(p.id).saat, 0), topGelmedi = kisiler.reduce((t, p) => t + mesaiOzet(p.id).gelmedi, 0);
+  $("#icerik").innerHTML =
+    '<div class="ust"><h1>Mesai Takibi</h1>' +
+    '<div style="display:flex;align-items:center;gap:6px"><button id="mOnce" title="Önceki ay">‹</button><b style="min-width:120px;text-align:center">' + AYLAR[a - 1] + " " + y + '</b><button id="mSonra" title="Sonraki ay">›</button></div>' +
+    '<label class="not" style="margin-left:12px"><input type="checkbox" id="mTum"' + (mesaiTumGunler ? " checked" : "") + "> Tüm günleri göster</label>" +
+    '<button class="ana" id="mExcel" style="margin-left:auto">📄 Excel\'e aktar</button></div>' +
+    '<div class="ust" style="margin-top:-4px"><div class="sekmeler" id="mGrup">' +
+    '<button data-g=""' + (!mesaiGrup ? ' class="secili"' : "") + ">Tümü (" + aktifHepsi.length + ")</button>" +
+    GRUPLAR.filter(g => aktifHepsi.some(p => sirketKlasoru(p) === g[0])).map(g => '<button data-g="' + g[0] + '"' + (mesaiGrup === g[0] ? ' class="secili"' : "") + ">" + g[1] + " (" + aktifHepsi.filter(p => sirketKlasoru(p) === g[0]).length + ")</button>").join("") +
+    "</div></div>" +
+    '<div class="not" style="margin:-2px 0 8px">Kutuya tıkla → 📋 Planlı / ✔ Geldi / ✗ Gelmedi seç. Gün başlığına tıkla → o günü herkes için toplu işaretle. Sadece <b style="color:#1e7b34">✔ Geldi</b> olanlar mesai sayılır.' + (mesaiTumGunler ? "" : " Hafta sonları, resmi tatiller ve kaydı olan günler görünüyor.") + "</div>" +
+    '<div class="kutu" style="padding:8px;overflow:auto"><table style="border-collapse:collapse;font-size:13px">' +
+    '<thead><tr><th style="text-align:left;padding:6px 8px;border:1px solid #e3e8ee;position:sticky;left:0;background:#fff">Personel</th>' +
+    gunler.map(d => '<th class="mg" data-t="' + d.t + '" title="' + goster(d.t) + ' — tıkla, bu günü toplu işaretle" style="cursor:pointer;padding:4px 3px;border:1px solid #e3e8ee;font-size:11px;line-height:1.2;' +
+      (d.tatil ? "background:#fde2e2;color:#c0392b" : d.hs ? "background:#e3effb;color:#1F4E78" : "background:#f7f9fb") + '">' + KISA_GUN[d.gun] + "<br><b style=\"font-size:13px\">" + d.g + "</b></th>").join("") +
+    '<th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Gün</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Saat</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#fdecec;color:#c0392b">Gelmedi</th></tr></thead>' +
+    "<tbody>" + (satirlar || '<tr><td colspan="' + (gunler.length + 4) + '" class="bos">Bu grupta personel yok.</td></tr>') + "</tbody>" +
+    '<tfoot><tr><td style="padding:5px 8px;border:1px solid #e3e8ee;font-weight:700;text-align:right">Gelen kişi</td>' + gunler.map(d => { const n = gunGeldi(d); return '<td style="text-align:center;border:1px solid #e3e8ee;font-weight:700;color:#1e7b34">' + (n || "") + "</td>"; }).join("") +
+    '<td style="text-align:center;border:1px solid #e3e8ee;font-weight:700">' + (topGun || "") + '</td><td style="text-align:center;border:1px solid #e3e8ee;font-weight:700">' + (topSaat ? sayi(topSaat) : "") + '</td><td style="text-align:center;border:1px solid #e3e8ee;font-weight:700;color:#c0392b">' + (topGelmedi || "") + "</td></tr></tfoot></table></div>";
+  const ayKaydir = n => { const d = new Date(y, a - 1 + n, 1); mesaiAy = d.getFullYear() + "-" + iki(d.getMonth() + 1); SAYFALAR.mesai(); };
+  $("#mOnce").onclick = () => ayKaydir(-1); $("#mSonra").onclick = () => ayKaydir(1);
+  $("#mTum").onchange = e => { mesaiTumGunler = e.target.checked; SAYFALAR.mesai(); };
+  $$("#mGrup [data-g]").forEach(b => b.onclick = () => { mesaiGrup = b.dataset.g; SAYFALAR.mesai(); });
+  $$("#icerik .mh").forEach(td => td.onclick = () => mesaiHucrePencere(+td.dataset.p, td.dataset.t));
+  $$("#icerik .mg").forEach(th => th.onclick = () => mesaiGunPencere(th.dataset.t));
+  $("#mExcel").onclick = mesaiExcel;
+};
+async function mesaiYaz(pid, t, durum, saat, not) {
+  const i = V.mesai.findIndex(m => m.personelId === pid && m.tarih === t);
+  if (!durum) { if (i >= 0) V.mesai.splice(i, 1); return; }
+  const kayit = { id: i >= 0 ? V.mesai[i].id : yeniId(V.mesai), personelId: pid, tarih: t, durum, saat: durum === "geldi" ? (+saat > 0 ? +saat : MESAI_SAAT) : (+saat || MESAI_SAAT), not: not || "" };
+  if (i >= 0) V.mesai[i] = kayit; else V.mesai.push(kayit);
+}
+function mesaiHucrePencere(pid, t) {
+  const p = personelBul(pid), m = mesaiKayit(pid, t) || {}, iz = mesaiIzinde(pid, t), d = tarihNesne(t);
+  const btn = (durum, etiket, renk) => '<button class="kucuk" data-d="' + durum + '" style="padding:10px 14px;font-size:15px;' + (m.durum === durum ? "outline:3px solid " + renk + ";" : "") + "border-color:" + renk + ";color:" + renk + '">' + etiket + "</button>";
+  pencereAc("<h2>" + esc(p.ad) + "</h2>" +
+    '<div class="not" style="margin-bottom:10px">' + goster(t) + " " + GUNLER[d.getDay()] + (tatilKume.has(t) ? " · resmi tatil" : "") + (iz ? ' · <span class="eksi">bu gün ' + esc(trKucuk(iz.tur)) + "de</span>" : "") + "</div>" +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' + btn("plan", "📋 Planlı", "#b7791f") + btn("geldi", "✔ Geldi", "#1e7b34") + btn("gelmedi", "✗ Gelmedi", "#c0392b") + btn("", "Temizle", "#666") + "</div>" +
+    '<div class="form"><div><label>Mesai saati</label><input id="mhSaat" type="number" min="0.5" step="0.5" value="' + (m.saat || MESAI_SAAT) + '"></div><div><label>Not</label><input id="mhNot" value="' + esc(m.not || "") + '"></div></div>' +
+    '<div class="pencere-alt"><button id="mhKapat">Kapat</button></div>');
+  $("#mhKapat").onclick = pencereKapat;
+  $$("#pencereKutu [data-d]").forEach(b => b.onclick = async () => {
+    await mesaiYaz(pid, t, b.dataset.d, $("#mhSaat").value, $("#mhNot").value.trim());
+    if (await kaydet("mesai")) { pencereKapat(); SAYFALAR.mesai(); }
+  });
+}
+function mesaiGunPencere(t) {
+  const kisiler = mesaiKisiler(), d = tarihNesne(t);
+  const sec = (pid) => { const m = mesaiKayit(pid, t) || {}; return '<select data-mp="' + pid + '" style="width:auto">' +
+    [["", "—"], ["plan", "📋 Planlı"], ["geldi", "✔ Geldi"], ["gelmedi", "✗ Gelmedi"]].map(o => '<option value="' + o[0] + '"' + ((m.durum || "") === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select>"; };
+  pencereAc("<h2>" + goster(t) + " " + GUNLER[d.getDay()] + " — toplu işaretle</h2>" +
+    '<div class="not" style="margin-bottom:8px">Her personel için durumu seç, en altta Kaydet\'e bas. Planlı olanları tek tıkla "Geldi" yapabilirsin.</div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:8px"><button class="kucuk" id="mgPlanGeldi">📋 Planlıların hepsi → ✔ Geldi</button><button class="kucuk" id="mgPlanGelmedi">📋 Planlıların hepsi → ✗ Gelmedi</button></div>' +
+    '<div style="max-height:55vh;overflow:auto;border:1px solid var(--cizgi);border-radius:8px"><table><tbody>' +
+    kisiler.map(p => { const m = mesaiKayit(p.id, t) || {}, iz = mesaiIzinde(p.id, t);
+      return "<tr><td>" + esc(p.ad) + (iz ? ' <span class="not">(' + esc(trKucuk(iz.tur)) + ")</span>" : "") + '</td><td class="not">' + esc(((GRUPLAR.find(x => x[0] === sirketKlasoru(p)) || ["", ""])[1])) + "</td><td>" + sec(p.id) +
+        '</td><td><input data-ms="' + p.id + '" type="number" min="0.5" step="0.5" value="' + (m.saat || MESAI_SAAT) + '" style="width:70px" title="saat"></td></tr>'; }).join("") +
+    "</tbody></table></div>" +
+    '<div class="pencere-alt"><button id="mgIptal">Vazgeç</button><button class="ana" id="mgKaydet">Kaydet</button></div>');
+  $("#mgIptal").onclick = pencereKapat;
+  const toplu = hedef => $$("#pencereKutu [data-mp]").forEach(s => { if (s.value === "plan") s.value = hedef; });
+  $("#mgPlanGeldi").onclick = () => toplu("geldi"); $("#mgPlanGelmedi").onclick = () => toplu("gelmedi");
+  $("#mgKaydet").onclick = async () => {
+    for (const s of $$("#pencereKutu [data-mp]")) {
+      const pid = +s.dataset.mp, eski = mesaiKayit(pid, t), saat = $('#pencereKutu [data-ms="' + pid + '"]').value;
+      if ((eski ? eski.durum : "") === s.value && (!eski || +eski.saat === +saat)) continue;
+      await mesaiYaz(pid, t, s.value, saat, eski ? eski.not : "");
+    }
+    if (await kaydet("mesai")) { pencereKapat(); bildir("Kaydedildi."); SAYFALAR.mesai(); }
+  };
+}
+// Basit Excel (.xlsx) üretici: satirlar = [[hücre,...],...]; kalin = kalın yazılacak satır numaraları (0'dan)
+async function basitXlsx(sayfaAdi, satirlar, kalin, genislik) {
+  const xe = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const harf = i => { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const rows = satirlar.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => {
+    if (v === "" || v == null) return "";
+    const ref = harf(ci) + (ri + 1), st = (kalin || []).includes(ri) ? ' s="1"' : "";
+    return typeof v === "number" ? '<c r="' + ref + '"' + st + "><v>" + v + "</v></c>" : '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + xe(v) + "</t></is></c>";
+  }).join("") + "</row>").join("");
+  const cols = (genislik || []).length ? "<cols>" + genislik.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join("") + "</cols>" : "";
+  const z = new JSZip();
+  z.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>');
+  z.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  z.file("xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + xe(sayfaAdi).slice(0, 31) + '" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  z.file("xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+  z.file("xl/styles.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>');
+  z.file("xl/worksheets/sheet1.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' + cols + "<sheetData>" + rows + "</sheetData></worksheet>");
+  return z.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE" });
+}
+async function mesaiExcel() {
+  if (typeof JSZip === "undefined") { bildir("Excel aracı yüklenemedi.", true); return; }
+  const [y, a] = mesaiAy.split("-").map(Number), kisiler = mesaiKisiler();
+  const l = V.mesai.filter(m => m.tarih.startsWith(mesaiAy) && kisiler.some(p => p.id === m.personelId)).sort((x, z) => x.tarih < z.tarih ? -1 : x.tarih > z.tarih ? 1 : personelBul(x.personelId).ad.localeCompare(personelBul(z.personelId).ad, "tr"));
+  const geldi = l.filter(m => m.durum === "geldi"), gelmedi = l.filter(m => m.durum === "gelmedi");
+  const grupAdi = p => ((GRUPLAR.find(x => x[0] === sirketKlasoru(p)) || ["", ""])[1]);
+  const s = [], kalin = [];
+  s.push(["PERSONEL FAZLA MESAİ TAKİP ÇİZELGESİ"]); kalin.push(0);
+  s.push(["DÖNEM: " + AYLAR[a - 1] + " / " + y + (mesaiGrup ? " — " + ((GRUPLAR.find(x => x[0] === mesaiGrup) || ["", ""])[1]) : "")]);
+  s.push([]);
+  kalin.push(s.length); s.push(["SIRA NO", "PERSONEL ADI SOYADI", "ŞİRKET", "TARİH", "GÜN", "MESAİ SÜRESİ (SAAT)", "NOT"]);
+  geldi.forEach((m, n) => { const p = personelBul(m.personelId); s.push([n + 1, p.ad, grupAdi(p), goster(m.tarih), GUNLER[tarihNesne(m.tarih).getDay()], +m.saat || 0, m.not || ""]); });
+  s.push([]);
+  kalin.push(s.length); s.push(["PERSONEL TOPLAM MESAİ ÖZETİ"]);
+  kalin.push(s.length); s.push(["", "PERSONEL ADI SOYADI", "ŞİRKET", "MESAİ GÜN SAYISI", "TOPLAM MESAİ (SAAT)", "GELMEDİĞİ GÜN"]);
+  kisiler.forEach(p => { const o = mesaiOzet(p.id); if (o.gun || o.gelmedi) s.push(["", p.ad, grupAdi(p), o.gun, o.saat, o.gelmedi]); });
+  if (gelmedi.length) {
+    s.push([]);
+    kalin.push(s.length); s.push(["PLANLANIP GELMEYENLER (MESAİ ALAMAZ)"]);
+    kalin.push(s.length); s.push(["", "PERSONEL ADI SOYADI", "ŞİRKET", "TARİH", "GÜN", "", "NOT"]);
+    gelmedi.forEach(m => { const p = personelBul(m.personelId); s.push(["", p.ad, grupAdi(p), goster(m.tarih), GUNLER[tarihNesne(m.tarih).getDay()], "", m.not || ""]); });
+  }
+  try {
+    const blob = await basitXlsx("MESAİ", s, kalin, [8, 34, 18, 14, 12, 20, 30]);
+    const dad = AYLAR[a - 1] + " " + y + " FAZLA MESAİ" + (mesaiGrup ? " - " + mesaiGrup : "") + ".xlsx";
+    const r = await DK.dosyaYazResp("6-PUANTAJ VE BORDRO\\MESAİ TAKİP\\" + y + "\\" + dad, blob); const c = await r.json();
+    const url = URL.createObjectURL(blob), el = document.createElement("a"); el.href = url; el.download = dad; el.style.display = "none"; document.body.appendChild(el); el.click();
+    setTimeout(() => { el.remove(); URL.revokeObjectURL(url); }, 4000);
+    bildir(r.ok ? "Excel hazır: " + c.dosya.split("\\").pop() + " (6-PUANTAJ VE BORDRO\\MESAİ TAKİP klasörüne de kaydedildi)" : "Excel indirildi (klasöre kaydedilemedi: " + (c.hata || "") + ")", !r.ok);
+  } catch (e) { bildir("Excel hazırlanamadı: " + e.message, true); }
 }
 function yakinda(baslik, metin) {
   return function () { $("#icerik").innerHTML = "<h1>" + baslik + '</h1><div class="kutu"><p>' + metin + '</p><p class="not">Bu bölüm sıradaki adımlarda eklenecek.</p></div>'; };
