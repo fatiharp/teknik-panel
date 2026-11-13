@@ -1028,6 +1028,7 @@ SAYFALAR.mesai = function () {
     else if (m && m.durum === "gelmedi") { ic = "✗"; stil = "background:#fde2e2;color:#c0392b;font-weight:700"; }
     else if (m && m.durum === "plan") { ic = "📋"; stil = "background:#fff4d6"; }
     else if (iz) { const kd = izinGunKodu(iz, d.t), izinGunu = kd === (IZIN_KOD[iz.tur] || "İİ"); ic = '<span style="font-size:11px;font-weight:700;color:' + (izinGunu ? "#6b4e9b" : "#8a96a3") + '">' + kd + "</span>"; stil = izinGunu ? "background:#f1ebfa" : "background:#f4f6f8"; }
+    else { const kd = d.gun === 0 ? "HT" : (d.gun === 6 && !V.ayarlar.cumartesiIsGunu) ? "AT" : d.tatil ? "RT" : ""; if (kd) { ic = '<span style="font-size:11px;font-weight:700;color:#8a96a3">' + kd + "</span>"; stil = "background:#f4f6f8"; } }
     return '<td class="mh" data-p="' + p.id + '" data-t="' + d.t + '" title="' + esc(p.ad) + " · " + goster(d.t) + (iz ? " · " + esc(iz.tur) : "") + (m && m.not ? " · " + esc(m.not) : "") + '" style="text-align:center;cursor:pointer;border:1px solid #e3e8ee;min-width:38px;' +
       (d.hs || d.tatil ? "" : "") + stil + '">' + ic + "</td>";
   };
