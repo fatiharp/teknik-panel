@@ -15,6 +15,20 @@ let BILGI = {};
 const IZIN_TURLERI = ["YILLIK İZİN", "ÜCRETSİZ İZİN", "FAZLA MESAİ İZNİ", "DİĞER İZİN / İDARİ İZİN", "ÖLÜM İZNİ", "EVLİLİK İZNİ", "BABALIK İZNİ", "MAZERET İZNİ", "SAĞLIK RAPORU"];
 // Bu türlerde gün sayısı takvim günüdür (hafta sonu ve tatiller izne eklenmez)
 const TAKVIM_GUNU = ["ÖLÜM İZNİ", "EVLİLİK İZNİ", "BABALIK İZNİ", "SAĞLIK RAPORU"];
+// Puantaj kodları (Fatih'in puantaj şablonundaki gibi)
+const IZIN_KOD = { "YILLIK İZİN": "Yİ", "SAĞLIK RAPORU": "R", "ÖLÜM İZNİ": "Öİ", "EVLİLİK İZNİ": "Eİ", "BABALIK İZNİ": "Bİ", "MAZERET İZNİ": "Mİ", "ÜCRETSİZ İZİN": "Üİ", "DİĞER İZİN / İDARİ İZİN": "İİ", "FAZLA MESAİ İZNİ": "HD" };
+const PUANTAJ_KODLARI = [["X", "Çalıştı"], ["HT", "Hafta tatili (Pazar)"], ["AT", "Akdi tatil (Cumartesi)"], ["RT", "Resmi tatil"], ["Yİ", "Yıllık izin"], ["R", "Rapor"], ["Öİ", "Ölüm izni"], ["Eİ", "Evlilik izni"], ["Bİ", "Babalık izni"], ["Mİ", "Mazeret izni"], ["Üİ", "Ücretsiz izin"], ["İİ", "İdari / diğer izin"], ["HD", "Denkleştirme (fazla mesai) izni"], ["DVMZ", "Devamsızlık"]];
+// Bir izinde o günün puantaj kodu: takvim günü sayılan izinlerde (ölüm, evlilik, babalık, rapor) her gün izin kodu;
+// diğerlerinde (yıllık vb.) Cumartesi AT, Pazar HT, resmi tatil RT — bunlar izinden sayılmaz.
+function izinGunKodu(iz, t) {
+  const kod = IZIN_KOD[iz.tur] || "İİ";
+  if (TAKVIM_GUNU.includes(iz.tur)) return kod;
+  const g = tarihNesne(t).getDay();
+  if (g === 0) return "HT";
+  if (g === 6 && !V.ayarlar.cumartesiIsGunu) return "AT";
+  if (tatilKume.has(t)) return "RT";
+  return kod;
+}
 const RAPOR = "SAĞLIK RAPORU";
 const FORM_ISARET = { "YILLIK İZİN": "C18", "ÜCRETSİZ İZİN": "C19", "FAZLA MESAİ İZNİ": "C20", "DİĞER İZİN / İDARİ İZİN": "C21",
   "ÖLÜM İZNİ": "H18", "EVLİLİK İZNİ": "H19", "BABALIK İZNİ": "H20", "MAZERET İZNİ": "H21" };
@@ -443,8 +457,8 @@ SAYFALAR.izinler = function () {
   ciz();
 };
 
-function izinPencere(id, pidVarsayilan) {
-  const iz = id ? V.izinler.find(i => i.id === id) : { id: 0, personelId: pidVarsayilan || 0, tur: "YILLIK İZİN", yil: new Date().getFullYear(), baslangic: "", gun: "", isBasi: "", adres: "", aciklama: "" };
+function izinPencere(id, pidVarsayilan, varsayilan) {
+  const iz = id ? V.izinler.find(i => i.id === id) : Object.assign({ id: 0, personelId: pidVarsayilan || 0, tur: "YILLIK İZİN", yil: new Date().getFullYear(), baslangic: "", gun: "", isBasi: "", adres: "", aciklama: "" }, varsayilan || {});
   const kisiler = V.personel.filter(p => p.aktif || p.id === iz.personelId).sort((a, c) => a.ad.localeCompare(c.ad, "tr"));
   let isBasiElle = !!id;
   pencereAc(
@@ -1013,8 +1027,8 @@ SAYFALAR.mesai = function () {
     if (m && m.durum === "geldi") { ic = "✔" + (+m.saat !== MESAI_SAAT ? '<div style="font-size:10px">' + sayi(m.saat) + "s</div>" : ""); stil = "background:#d9f2dc;color:#1e7b34;font-weight:700"; }
     else if (m && m.durum === "gelmedi") { ic = "✗"; stil = "background:#fde2e2;color:#c0392b;font-weight:700"; }
     else if (m && m.durum === "plan") { ic = "📋"; stil = "background:#fff4d6"; }
-    else if (iz) { ic = '<span style="font-size:10px;color:#999">' + (iz.tur === RAPOR ? "rapor" : "izin") + "</span>"; }
-    return '<td class="mh" data-p="' + p.id + '" data-t="' + d.t + '" title="' + esc(p.ad) + " · " + goster(d.t) + (m && m.not ? " · " + esc(m.not) : "") + '" style="text-align:center;cursor:pointer;border:1px solid #e3e8ee;min-width:38px;' +
+    else if (iz) { const kd = izinGunKodu(iz, d.t), izinGunu = kd === (IZIN_KOD[iz.tur] || "İİ"); ic = '<span style="font-size:11px;font-weight:700;color:' + (izinGunu ? "#6b4e9b" : "#8a96a3") + '">' + kd + "</span>"; stil = izinGunu ? "background:#f1ebfa" : "background:#f4f6f8"; }
+    return '<td class="mh" data-p="' + p.id + '" data-t="' + d.t + '" title="' + esc(p.ad) + " · " + goster(d.t) + (iz ? " · " + esc(iz.tur) : "") + (m && m.not ? " · " + esc(m.not) : "") + '" style="text-align:center;cursor:pointer;border:1px solid #e3e8ee;min-width:38px;' +
       (d.hs || d.tatil ? "" : "") + stil + '">' + ic + "</td>";
   };
   let grupOnce = "";
@@ -1038,7 +1052,7 @@ SAYFALAR.mesai = function () {
     '<button data-g=""' + (!mesaiGrup ? ' class="secili"' : "") + ">Tümü (" + aktifHepsi.length + ")</button>" +
     GRUPLAR.filter(g => aktifHepsi.some(p => sirketKlasoru(p) === g[0])).map(g => '<button data-g="' + g[0] + '"' + (mesaiGrup === g[0] ? ' class="secili"' : "") + ">" + g[1] + " (" + aktifHepsi.filter(p => sirketKlasoru(p) === g[0]).length + ")</button>").join("") +
     "</div></div>" +
-    '<div class="not" style="margin:-2px 0 8px">Kutuya tıkla → 📋 Planlı / ✔ Geldi / ✗ Gelmedi seç. Gün başlığına tıkla → o günü herkes için toplu işaretle. Sadece <b style="color:#1e7b34">✔ Geldi</b> olanlar mesai sayılır.' + (mesaiTumGunler ? "" : " Hafta sonları, resmi tatiller ve kaydı olan günler görünüyor.") + "</div>" +
+    '<div class="not" style="margin:-2px 0 8px">Kutuya tıkla → 📋 Planlı / ✔ Geldi / ✗ Gelmedi seç ya da izin türü (Yİ, R, Öİ…) gir. Gün başlığına tıkla → o günü herkes için toplu işaretle. Sadece <b style="color:#1e7b34">✔ Geldi</b> olanlar mesai sayılır.' + (mesaiTumGunler ? "" : " Hafta sonları, resmi tatiller ve kaydı olan günler görünüyor.") + "</div>" +
     '<div class="kutu" style="padding:8px;overflow:auto"><table style="border-collapse:collapse;font-size:13px">' +
     '<thead><tr><th style="text-align:left;padding:6px 8px;border:1px solid #e3e8ee;position:sticky;left:0;background:#fff">Personel</th>' +
     gunler.map(d => '<th class="mg" data-t="' + d.t + '" title="' + goster(d.t) + ' — tıkla, bu günü toplu işaretle" style="cursor:pointer;padding:4px 3px;border:1px solid #e3e8ee;font-size:11px;line-height:1.2;' +
@@ -1046,7 +1060,9 @@ SAYFALAR.mesai = function () {
     '<th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Gün</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Saat</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#fdecec;color:#c0392b">Gelmedi</th></tr></thead>' +
     "<tbody>" + (satirlar || '<tr><td colspan="' + (gunler.length + 4) + '" class="bos">Bu grupta personel yok.</td></tr>') + "</tbody>" +
     '<tfoot><tr><td style="padding:5px 8px;border:1px solid #e3e8ee;font-weight:700;text-align:right">Gelen kişi</td>' + gunler.map(d => { const n = gunGeldi(d); return '<td style="text-align:center;border:1px solid #e3e8ee;font-weight:700;color:#1e7b34">' + (n || "") + "</td>"; }).join("") +
-    '<td style="text-align:center;border:1px solid #e3e8ee;font-weight:700">' + (topGun || "") + '</td><td style="text-align:center;border:1px solid #e3e8ee;font-weight:700">' + (topSaat ? sayi(topSaat) : "") + '</td><td style="text-align:center;border:1px solid #e3e8ee;font-weight:700;color:#c0392b">' + (topGelmedi || "") + "</td></tr></tfoot></table></div>";
+    '<td style="text-align:center;border:1px solid #e3e8ee;font-weight:700">' + (topGun || "") + '</td><td style="text-align:center;border:1px solid #e3e8ee;font-weight:700">' + (topSaat ? sayi(topSaat) : "") + '</td><td style="text-align:center;border:1px solid #e3e8ee;font-weight:700;color:#c0392b">' + (topGelmedi || "") + "</td></tr></tfoot></table></div>" +
+    '<div class="not" style="margin-top:6px;line-height:1.9">Puantaj kodları: ' + PUANTAJ_KODLARI.map(k => '<span style="display:inline-block;margin-right:10px"><b style="color:#6b4e9b">' + k[0] + "</b> " + k[1] + "</span>").join("") +
+    ' · <b style="color:#1e7b34">✔</b> mesaiye geldi · <b style="color:#c0392b">✗</b> mesaiye gelmedi · 📋 mesai planlı</div>';
   const ayKaydir = n => { const d = new Date(y, a - 1 + n, 1); mesaiAy = d.getFullYear() + "-" + iki(d.getMonth() + 1); SAYFALAR.mesai(); };
   $("#mOnce").onclick = () => ayKaydir(-1); $("#mSonra").onclick = () => ayKaydir(1);
   $("#mTum").onchange = e => { mesaiTumGunler = e.target.checked; SAYFALAR.mesai(); };
@@ -1068,8 +1084,14 @@ function mesaiHucrePencere(pid, t) {
     '<div class="not" style="margin-bottom:10px">' + goster(t) + " " + GUNLER[d.getDay()] + (tatilKume.has(t) ? " · resmi tatil" : "") + (iz ? ' · <span class="eksi">bu gün ' + esc(trKucuk(iz.tur)) + "de</span>" : "") + "</div>" +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' + btn("plan", "📋 Planlı", "#b7791f") + btn("geldi", "✔ Geldi", "#1e7b34") + btn("gelmedi", "✗ Gelmedi", "#c0392b") + btn("", "Temizle", "#666") + "</div>" +
     '<div class="form"><div><label>Mesai saati</label><input id="mhSaat" type="number" min="0.5" step="0.5" value="' + (m.saat || MESAI_SAAT) + '"></div><div><label>Not</label><input id="mhNot" value="' + esc(m.not || "") + '"></div></div>' +
+    '<h2 style="margin-top:16px">İzin / puantaj kodu</h2>' +
+    (iz ? '<div class="ozet"><span>Bu gün <b style="color:#6b4e9b">' + izinGunKodu(iz, t) + "</b> — " + esc(iz.tur) + " (" + goster(iz.baslangic) + ", " + sayi(iz.gun) + " gün, iş başı " + goster(iz.isBasi) + ')</span></div><button class="kucuk" id="mhIzinAc" style="margin-top:8px">İzin kaydını aç</button>'
+      : '<div class="not" style="margin-bottom:6px">Bu güne izin girmek için türünü seç; izin penceresi bu tarihle dolu açılır, gün sayısını girip kaydedersin (izin listesine, kalan izne ve forma işler).</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' + IZIN_TURLERI.map(tur => '<button class="kucuk" data-it="' + esc(tur) + '" title="' + esc(tur) + '"><b style="color:#6b4e9b">' + IZIN_KOD[tur] + "</b> " + esc(tur.replace(" / İDARİ İZİN", "").toLocaleLowerCase("tr-TR")) + "</button>").join("") + "</div>") +
     '<div class="pencere-alt"><button id="mhKapat">Kapat</button></div>');
   $("#mhKapat").onclick = pencereKapat;
+  if (iz) $("#mhIzinAc").onclick = () => izinPencere(iz.id);
+  $$("#pencereKutu [data-it]").forEach(b => b.onclick = () => izinPencere(null, pid, { tur: b.dataset.it, baslangic: t, yil: +t.slice(0, 4) }));
   $$("#pencereKutu [data-d]").forEach(b => b.onclick = async () => {
     await mesaiYaz(pid, t, b.dataset.d, $("#mhSaat").value, $("#mhNot").value.trim());
     if (await kaydet("mesai")) { pencereKapat(); SAYFALAR.mesai(); }
