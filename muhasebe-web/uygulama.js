@@ -137,32 +137,21 @@ function git() {
 }
 window.addEventListener("hashchange", git);
 
-SAYFALAR.ana = function () {
+// Ana Sayfa + İzinler tek sayfada: üstteki özet kutular
+function izinKartlari() {
   const b = bugun(), hafta = gunEkle(b, 7), iki_hafta = gunEkle(b, 14);
-  const aktif = V.personel.filter(p => p.aktif);
-  const izinde = V.izinler.filter(i => i.baslangic <= b && i.isBasi > b).sort((a, c) => a.isBasi < c.isBasi ? -1 : 1);
-  const donecek = izinde.filter(i => i.isBasi <= hafta);
-  const yaklasan = V.izinler.filter(i => i.baslangic > b && i.baslangic <= iki_hafta).sort((a, c) => a.baslangic < c.baslangic ? -1 : 1);
-  const satir = (i, sutun) => { const p = personelBul(i.personelId) || {}; return '<tr class="tikla" data-izin="' + i.id + '"><td>' + esc(p.ad) + "</td><td>" + esc(i.tur) + "</td><td>" + sutun + "</td></tr>"; };
-  $("#icerik").innerHTML =
-    '<h1>Ana Sayfa</h1>' +
-    '<div class="kartlar">' +
-    '<div class="kart"><div class="sayi">' + aktif.length + '</div><div class="etiket">Aktif personel</div></div>' +
-    '<div class="kart"><div class="sayi">' + izinde.length + '</div><div class="etiket">Şu an izinde</div></div>' +
-    '<div class="kart"><div class="sayi">' + donecek.length + '</div><div class="etiket">7 gün içinde işe dönecek</div></div>' +
-    '<div class="kart"><div class="sayi">' + yaklasan.length + '</div><div class="etiket">14 gün içinde izne çıkacak</div></div>' +
-    "</div>" +
-    '<div class="kutu"><h2>Şu an izinde olanlar</h2>' + (izinde.length
-      ? '<table><thead><tr><th>Personel</th><th>İzin türü</th><th>İşe dönüş</th></tr></thead><tbody>' + izinde.map(i => satir(i, gosterGun(i.isBasi))).join("") + "</tbody></table>"
-      : '<div class="not">Şu an izinde olan yok.</div>') + "</div>" +
-    '<div class="kutu"><h2>Yaklaşan izinler (14 gün)</h2>' + (yaklasan.length
-      ? '<table><thead><tr><th>Personel</th><th>İzin türü</th><th>Başlangıç</th></tr></thead><tbody>' + yaklasan.map(i => satir(i, gosterGun(i.baslangic))).join("") + "</tbody></table>"
-      : '<div class="not">Yaklaşan izin yok.</div>') + "</div>" +
-    '<button class="ana" id="yeniIzin">+ Yeni izin gir</button> <button id="wpDonus">📱 İzin dönüşlerini WhatsApp\'ta paylaş</button>';
-  $("#yeniIzin").onclick = () => izinPencere(null);
-  $("#wpDonus").onclick = () => izinDonusPenceresi();
-  $$("[data-izin]").forEach(t => t.onclick = () => izinPencere(+t.dataset.izin));
-};
+  const aktif = V.personel.filter(p => p.aktif).length;
+  const izinde = V.izinler.filter(i => i.baslangic <= b && i.isBasi > b).length;
+  const donecek = V.izinler.filter(i => i.baslangic <= b && i.isBasi > b && i.isBasi <= hafta).length;
+  const yaklasan = V.izinler.filter(i => i.baslangic > b && i.baslangic <= iki_hafta).length;
+  return '<div class="kartlar">' +
+    '<div class="kart"><div class="sayi">' + aktif + '</div><div class="etiket">Aktif personel</div></div>' +
+    '<div class="kart"><div class="sayi">' + izinde + '</div><div class="etiket">Şu an izinde</div></div>' +
+    '<div class="kart"><div class="sayi">' + donecek + '</div><div class="etiket">7 gün içinde işe dönecek</div></div>' +
+    '<div class="kart"><div class="sayi">' + yaklasan + '</div><div class="etiket">14 gün içinde izne çıkacak</div></div>' +
+    "</div>";
+}
+SAYFALAR.ana = function () { SAYFALAR.izinler(); };
 
 let personelArama = "", pasifGoster = false, personelGrup = "";
 const GRUPLAR = [["BOĞAZİÇİ", "Boğaziçi Yönetim"], ["İSPER", "İsper"], ["ÇIRAK", "Çıraklar"], ["MEMUR", "Memur"], ["DİĞER", "Diğer"]];
@@ -418,16 +407,16 @@ SAYFALAR.izinler = function () {
   const b = bugun(), yil = new Date().getFullYear();
   const sekmeler = [["izinde", "Şu an izinde"], ["yaklasan", "Yaklaşan"], ["yil", yil + " yılı"], ["tumu", "Tümü"], ["tablo", "📊 Ay ay tablo"]];
   if (izinSekme === "tablo") {
-    $("#icerik").innerHTML = '<div class="ust"><h1>İzinler</h1><div class="sekmeler">' + sekmeler.map(s => '<button data-s="' + s[0] + '"' + (s[0] === izinSekme ? ' class="secili"' : "") + ">" + s[1] + "</button>").join("") +
+    $("#icerik").innerHTML = izinKartlari() + '<div class="ust"><h1>İzinler</h1><div class="sekmeler">' + sekmeler.map(s => '<button data-s="' + s[0] + '"' + (s[0] === izinSekme ? ' class="secili"' : "") + ">" + s[1] + "</button>").join("") +
       "</div></div>" + izinTablosu();
     $$("[data-s]").forEach(x => x.onclick = () => { izinSekme = x.dataset.s; SAYFALAR.izinler(); });
     $("#tyil").onchange = e => { tabloYil = +e.target.value; SAYFALAR.izinler(); };
     $$("[data-id]").forEach(t => t.onclick = () => personelPencere(+t.dataset.id));
     return;
   }
-  $("#icerik").innerHTML =
+  $("#icerik").innerHTML = izinKartlari() +
     '<div class="ust"><h1>İzinler</h1><div class="sekmeler">' + sekmeler.map(s => '<button data-s="' + s[0] + '"' + (s[0] === izinSekme ? ' class="secili"' : "") + ">" + s[1] + "</button>").join("") +
-    '</div><input class="ara" id="ara" placeholder="Personel ara…" value="' + esc(izinArama) + '"><button class="ana" id="yeni">+ Yeni izin</button></div>' +
+    '</div><input class="ara" id="ara" placeholder="Personel ara…" value="' + esc(izinArama) + '"><button class="ana" id="yeni">+ Yeni izin</button> <button id="wpDonus">📱 Dönüşleri paylaş</button></div>' +
     '<div class="tablo-kap"><table><thead><tr><th>Personel</th><th>İzin türü</th><th>Başlangıç</th><th class="sag">Gün</th><th>İş başı</th><th>Durum</th><th>İmzalı form</th><th></th></tr></thead><tbody id="liste"></tbody></table></div>';
   const ciz = () => {
     const a = trKucuk(izinArama);
@@ -454,6 +443,7 @@ SAYFALAR.izinler = function () {
   $$("[data-s]").forEach(x => x.onclick = () => { izinSekme = x.dataset.s; SAYFALAR.izinler(); });
   $("#ara").oninput = e => { izinArama = e.target.value; ciz(); };
   $("#yeni").onclick = () => izinPencere(null);
+  { const w = $("#wpDonus"); if (w) w.onclick = () => izinDonusPenceresi(); }
   ciz();
 };
 
