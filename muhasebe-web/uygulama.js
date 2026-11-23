@@ -1320,6 +1320,8 @@ window.baslat = async function () {
     Object.assign(V, veri); BILGI = bilgi;
     if (!V.ayarlar || Array.isArray(V.ayarlar)) V.ayarlar = {};
     tatilYenile();
+    // Program her açılışta Mesai sayfasında başlasın (adres çubuğunda kalan eski iz önemsenmesin)
+    try { history.replaceState(null, "", location.pathname + location.search + "#mesai"); } catch (e) { location.hash = "#mesai"; }
     if (V.ayarlar && V.ayarlar.kilit && !kilitAcikMi()) kilitEkrani(); else git();
   } catch (e) {
     $("#icerik").innerHTML = '<div class="kutu eksi">Program başlatılamadı: ' + esc(e.message) + "</div>";
