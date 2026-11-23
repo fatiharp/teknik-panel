@@ -10,8 +10,9 @@ self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
   if (e.request.method !== "GET" || u.origin !== location.origin) return;           // sadece kendi dosyalarımız
   if (u.pathname.indexOf("/api/") >= 0) return;                                      // veri istekleri asla önbelleğe girmez
-  // Önce internet (en güncel sürüm gelsin), olmazsa önbellek (çevrimdışı çalışsın)
-  e.respondWith(fetch(e.request).then(r => {
+  // Önce internet (en güncel sürüm gelsin), tarayıcı disk önbelleğini ATLA (reload) → eski JS asla gelmesin.
+  // İnternet yoksa kendi önbelleğimizden ver (çevrimdışı çalışsın).
+  e.respondWith(fetch(new Request(e.request.url, { cache: "reload" })).then(r => {
     if (r && r.ok) { const k = r.clone(); caches.open(AD).then(ca => ca.put(e.request, k)); }
     return r;
   }).catch(() => caches.match(e.request)));
