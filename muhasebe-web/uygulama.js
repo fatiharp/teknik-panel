@@ -972,18 +972,30 @@ async function zimmetSil(id) {
 let zimmetArama = "";
 SAYFALAR.zimmet = function () {
   $("#icerik").innerHTML =
-    '<div class="ust"><h1>Zimmet</h1><input class="ara" id="ara" placeholder="Ara: kişi, malzeme, tesis…" value="' + esc(zimmetArama) + '"><button class="ana" id="yeni">+ Yeni zimmet</button></div>' +
-    '<div class="not" style="margin-top:-4px">Personele ve dış tesisten gelenlere verilen malzemeler. Kaydettiğinde tutanağı ve toplu listeyi <b>10-ZİMMET</b> klasörüne Excel olarak yazar.</div>' +
-    '<div class="tablo-kap" style="margin-top:10px"><table><thead><tr><th>Tarih</th><th>Teslim alan</th><th>Tesis / Durum</th><th>Malzemeler</th><th>Teslim eden</th><th></th></tr></thead><tbody id="liste"></tbody></table></div>';
+    '<div class="ust"><h1>Zimmet</h1><input class="ara" id="ara" placeholder="Ara: kişi, malzeme…" value="' + esc(zimmetArama) + '"><button class="ana" id="yeni">+ Yeni zimmet</button> <button id="zExcel">📊 Excel\'e aktar</button></div>' +
+    '<div class="not" style="margin-top:-4px">Kişiye göre gruplu; her kişinin aldığı malzemeler tarih tarih listelenir. Kaydedince tutanak + toplu liste <b>10-ZİMMET</b> klasörüne Excel yazılır.</div>' +
+    '<div id="liste" style="margin-top:10px"></div>';
   const ciz = () => {
     const a = trKucuk(zimmetArama);
-    const l = (V.zimmet || []).filter(z => !a || trKucuk([zimmetTeslimAlan(z), z.disTesis, z.teslimEden, z.aciklama, (z.kalemler || []).map(k => k.malzeme).join(" ")].join(" ")).includes(a)).sort((x, y) => x.tarih < y.tarih ? 1 : -1);
-    $("#liste").innerHTML = l.length ? l.map(z => '<tr class="tikla" data-id="' + z.id + '"><td style="white-space:nowrap">' + goster(z.tarih) + "</td><td><b>" + esc(zimmetTeslimAlan(z)) + '</b></td><td class="not">' + esc(z.teslimAlanTip === "dis" ? ("Dış: " + (z.disTesis || "")) : "Personel") + "</td><td>" + esc(zimmetMalzemeOzet(z)) + '</td><td class="not">' + esc(z.teslimEden || "") + '</td><td class="sag" style="width:44px"><button class="kucuk tehlike" data-zsil="' + z.id + '" title="Sil (Excel de silinir)">🗑</button></td></tr>').join("") : '<tr><td colspan="6" class="bos">Kayıt yok. "+ Yeni zimmet" ile ekle.</td></tr>';
+    const l = (V.zimmet || []).filter(z => !a || trKucuk([zimmetTeslimAlan(z), z.disTesis, z.teslimEden, (z.kalemler || []).map(k => k.malzeme).join(" ")].join(" ")).includes(a));
+    const gruplar = {};
+    l.forEach(z => { const ad = zimmetTeslimAlan(z); (gruplar[ad] = gruplar[ad] || []).push(z); });
+    const adlar = Object.keys(gruplar).sort((x, y) => x.localeCompare(y, "tr"));
+    $("#liste").innerHTML = adlar.length ? adlar.map(ad => {
+      const ks = gruplar[ad].slice().sort((x, y) => (x.tarih || "") < (y.tarih || "") ? 1 : -1);
+      const toplamKalem = ks.reduce((t, z) => t + (z.kalemler || []).reduce((s, k) => s + (+k.adet || 0), 0), 0);
+      const dis = ks[0].teslimAlanTip === "dis";
+      return '<div class="kutu pgrup"><div class="pbas"><h2>' + esc(ad) + (dis ? ' <span class="not">(dış)</span>' : "") + '</h2><span class="not">' + ks.length + " teslim · " + toplamKalem + " adet malzeme</span></div>" +
+        '<table class="ptablo"><thead><tr><th style="width:120px">Tarih</th><th>Malzemeler</th><th style="width:160px">Teslim eden</th><th style="width:44px"></th></tr></thead><tbody>' +
+        ks.map(z => '<tr class="tikla" data-id="' + z.id + '"><td style="white-space:nowrap">' + (z.tarih ? goster(z.tarih) : '<span class="not">tarih yok</span>') + "</td><td>" + esc(zimmetMalzemeOzet(z)) + '</td><td class="not">' + esc(z.teslimEden || "") + '</td><td class="sag"><button class="kucuk tehlike" data-zsil="' + z.id + '" title="Sil (Excel de silinir)">🗑</button></td></tr>').join("") +
+        "</tbody></table></div>";
+    }).join("") : '<div class="kutu bos">Kayıt yok. "+ Yeni zimmet" ile ekle.</div>';
     $$("#liste [data-id]").forEach(t => t.onclick = e => { if (!e.target.dataset.zsil) zimmetPencere(+t.dataset.id); });
     $$("#liste [data-zsil]").forEach(b => b.onclick = async ev => { ev.stopPropagation(); if (await zimmetSil(+b.dataset.zsil)) git(); });
   };
   $("#ara").oninput = e => { zimmetArama = e.target.value; ciz(); };
   $("#yeni").onclick = () => zimmetPencere(null);
+  $("#zExcel").onclick = async () => { try { bildir("Excel hazırlanıyor…"); await zimmetListeExcel(); bildir("ZİMMET KAYITLARI.xlsx güncellendi (10-ZİMMET)."); } catch (e) { bildir("Excel yazılamadı: " + e.message, true); } };
   ciz();
 };
 function zimmetPencere(id) {
