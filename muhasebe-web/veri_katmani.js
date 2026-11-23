@@ -9,7 +9,7 @@
 const DK = {
   handle: null,
   demo: false,
-  KOKLER: { personel: [], izinler: [], bakiye: [], tatiller: [], saha: [], giris: [], tesisler: [], mesai: [], ayarlar: {} },
+  KOKLER: { personel: [], izinler: [], bakiye: [], tatiller: [], saha: [], giris: [], tesisler: [], mesai: [], zimmet: [], ayarlar: {} },
 
   /* ---- klasör gezinme yardımcıları (yol: "4-PERSONEL\\BOĞAZİÇİ\\AD\\İZİN\\2026") ---- */
   // Eski program belge yollarını TAM yol yazıyordu (C:\...\TEKNİK PANEL\4-PERSONEL\...).
@@ -121,12 +121,14 @@ const DK = {
     }
     return { dizin: h, ad: aday, yol: parts.concat([aday]).join("\\") };
   },
-  async dosyaYazResp(hedef, blob) {
+  async dosyaYazResp(hedef, blob, ustuneYaz) {
     try {
-      const b = await DK.bosAd(hedef);
-      const fh = await b.dizin.getFileHandle(b.ad, { create: true });
+      let dizin, ad, yol;
+      if (ustuneYaz) { const t = await DK.dosyaTutamac(hedef, true); dizin = t.dizin; ad = t.ad; yol = DK.kokRel(hedef); }
+      else { const b = await DK.bosAd(hedef); dizin = b.dizin; ad = b.ad; yol = b.yol; }
+      const fh = await dizin.getFileHandle(ad, { create: true });
       const w = await fh.createWritable(); await w.write(blob); await w.close();
-      return { ok: true, json: async () => ({ dosya: b.yol }) };
+      return { ok: true, json: async () => ({ dosya: yol }) };
     } catch (e) {
       return { ok: false, json: async () => ({ hata: e.message }) };
     }

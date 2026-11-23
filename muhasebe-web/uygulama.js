@@ -2,7 +2,7 @@
    Veriler sunucu.ps1 üzerinden Belgeler\TeknikPanel\veri\*.json dosyalarında tutulur. */
 "use strict";
 
-const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], tesisler: [], mesai: [], ayarlar: {} };
+const V = { personel: [], izinler: [], bakiye: [], tatiller: [], giris: [], tesisler: [], mesai: [], zimmet: [], ayarlar: {} };
 const GIRIS_LINK = "https://personel.ibb.istanbul/";
 async function panoyaKopyala(metin, dugme) {
   if (!metin) { bildir("Kopyalanacak bir şey yok.", true); return; }
@@ -903,6 +903,125 @@ function izinDonusPenceresi() {
   $("#wpIptal").onclick = pencereKapat;
   $("#wpKopya").onclick = () => panoyaKopyala($("#wpMetin").value);
   $("#wpAc").onclick = () => { const t = $("#wpMetin").value.trim(); if (!t) return; window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank"); };
+}
+
+/* ---------------- Zimmet (malzeme teslim) ----------------
+   Kayıtlar zimmet.json'da; her teslim için ayrı tutanak + toplu liste TEKNİK PANEL\10-ZİMMET'e Excel yazılır. */
+function xlsxSutunHarf(n) { let s = ""; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
+function xlsxKacir(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+async function xlsxBlob(sayfaAdi, satirlar) {
+  let rowsXml = "";
+  satirlar.forEach((row, ri) => {
+    let c = "";
+    (row || []).forEach((cell, ci) => {
+      if (cell == null) return;
+      const ref = xlsxSutunHarf(ci) + (ri + 1), st = cell.s ? ' s="' + cell.s + '"' : "";
+      if (cell.sayi) c += '<c r="' + ref + '"' + st + '><v>' + (+cell.v || 0) + "</v></c>";
+      else c += '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + xlsxKacir(cell.v) + "</t></is></c>";
+    });
+    rowsXml += '<row r="' + (ri + 1) + '">' + c + "</row>";
+  });
+  const sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="8"/><col min="2" max="2" width="40"/><col min="3" max="8" width="16"/></cols><sheetData>' + rowsXml + "</sheetData></worksheet>";
+  const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCE6F1"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border/><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/></cellXfs></styleSheet>';
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>');
+  zip.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  zip.file("xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + xlsxKacir(sayfaAdi).slice(0, 31) + '" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  zip.file("xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+  zip.file("xl/styles.xml", styles);
+  zip.file("xl/worksheets/sheet1.xml", sheet);
+  return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE" });
+}
+function zimmetTeslimAlan(z) { return z.teslimAlanTip === "dis" ? (z.disAd || "(isim yok)") : ((personelBul(z.personelId) || {}).ad || "(silinmiş personel)"); }
+function zimmetMalzemeOzet(z) { return (z.kalemler || []).map(k => k.malzeme + (k.adet ? " (" + sayi(k.adet) + ")" : "")).join(", "); }
+function zimmetTarihDosya(s) { const d = tarihNesne(s) || new Date(); return d.getFullYear() + "." + iki(d.getMonth() + 1) + "." + iki(d.getDate()); }
+async function zimmetListeExcel() {
+  const ls = [[{ v: "S.No", s: 2 }, { v: "Tarih", s: 2 }, { v: "Teslim Alan", s: 2 }, { v: "Tesis / Durum", s: 2 }, { v: "Malzeme", s: 2 }, { v: "Adet", s: 2 }, { v: "Teslim Eden", s: 2 }, { v: "Açıklama", s: 2 }]];
+  let sira = 1;
+  (V.zimmet || []).slice().sort((a, b) => a.tarih < b.tarih ? 1 : -1).forEach(z => {
+    const al = zimmetTeslimAlan(z), td = z.teslimAlanTip === "dis" ? ("Dış: " + (z.disTesis || "")) : "Personel";
+    (z.kalemler || []).forEach(k => ls.push([{ v: sira++, sayi: true }, { v: goster(z.tarih) }, { v: al }, { v: td }, { v: k.malzeme }, { v: k.adet, sayi: true }, { v: z.teslimEden || "" }, { v: z.aciklama || "" }]));
+  });
+  const blob = await xlsxBlob("Zimmet Kayıtları", ls);
+  const r = await DK.dosyaYazResp("10-ZİMMET\\ZİMMET KAYITLARI.xlsx", blob, true);
+  const c = await r.json(); if (!r.ok) throw new Error(c.hata || "liste yazılamadı");
+}
+async function zimmetExceller(z) {
+  try {
+    const al = zimmetTeslimAlan(z), pr = [];
+    pr.push([{ v: "ZİMMET / TESLİM TUTANAĞI", s: 1 }]);
+    pr.push([{ v: "Tarih:", s: 1 }, { v: goster(z.tarih) }]);
+    pr.push([{ v: "Teslim alan:", s: 1 }, { v: al }]);
+    if (z.teslimAlanTip === "dis") pr.push([{ v: "Geldiği tesis:", s: 1 }, { v: z.disTesis || "" }]);
+    pr.push([{ v: "Teslim eden:", s: 1 }, { v: z.teslimEden || "" }]);
+    pr.push([]);
+    pr.push([{ v: "Sıra", s: 2 }, { v: "Malzeme", s: 2 }, { v: "Adet", s: 2 }]);
+    (z.kalemler || []).forEach((k, n) => pr.push([{ v: n + 1, s: 3, sayi: true }, { v: k.malzeme, s: 3 }, { v: k.adet, s: 3, sayi: true }]));
+    pr.push([]);
+    if (z.aciklama) pr.push([{ v: "Açıklama:", s: 1 }, { v: z.aciklama }]);
+    pr.push([]); pr.push([]);
+    pr.push([{ v: "Teslim Eden", s: 1 }, null, { v: "Teslim Alan", s: 1 }]);
+    pr.push([{ v: z.teslimEden || "" }, null, { v: al }]);
+    const blob = await xlsxBlob("Zimmet", pr);
+    const ad = "ZİMMET-" + z.id + " - " + zimmetTarihDosya(z.tarih) + " - " + al;
+    const r = await DK.dosyaYazResp("10-ZİMMET\\" + dosyaAdi(ad) + ".xlsx", blob, true);
+    const c = await r.json(); if (!r.ok) throw new Error(c.hata || "tutanak yazılamadı");
+    await zimmetListeExcel();
+  } catch (e) { bildir("Excel kaydedilemedi: " + e.message, true); }
+}
+let zimmetArama = "";
+SAYFALAR.zimmet = function () {
+  $("#icerik").innerHTML =
+    '<div class="ust"><h1>Zimmet</h1><input class="ara" id="ara" placeholder="Ara: kişi, malzeme, tesis…" value="' + esc(zimmetArama) + '"><button class="ana" id="yeni">+ Yeni zimmet</button></div>' +
+    '<div class="not" style="margin-top:-4px">Personele ve dış tesisten gelenlere verilen malzemeler. Kaydettiğinde tutanağı ve toplu listeyi <b>10-ZİMMET</b> klasörüne Excel olarak yazar.</div>' +
+    '<div class="tablo-kap" style="margin-top:10px"><table><thead><tr><th>Tarih</th><th>Teslim alan</th><th>Tesis / Durum</th><th>Malzemeler</th><th>Teslim eden</th></tr></thead><tbody id="liste"></tbody></table></div>';
+  const ciz = () => {
+    const a = trKucuk(zimmetArama);
+    const l = (V.zimmet || []).filter(z => !a || trKucuk([zimmetTeslimAlan(z), z.disTesis, z.teslimEden, z.aciklama, (z.kalemler || []).map(k => k.malzeme).join(" ")].join(" ")).includes(a)).sort((x, y) => x.tarih < y.tarih ? 1 : -1);
+    $("#liste").innerHTML = l.length ? l.map(z => '<tr class="tikla" data-id="' + z.id + '"><td style="white-space:nowrap">' + goster(z.tarih) + "</td><td><b>" + esc(zimmetTeslimAlan(z)) + '</b></td><td class="not">' + esc(z.teslimAlanTip === "dis" ? ("Dış: " + (z.disTesis || "")) : "Personel") + "</td><td>" + esc(zimmetMalzemeOzet(z)) + '</td><td class="not">' + esc(z.teslimEden || "") + "</td></tr>").join("") : '<tr><td colspan="5" class="bos">Kayıt yok. "+ Yeni zimmet" ile ekle.</td></tr>';
+    $$("#liste [data-id]").forEach(t => t.onclick = () => zimmetPencere(+t.dataset.id));
+  };
+  $("#ara").oninput = e => { zimmetArama = e.target.value; ciz(); };
+  $("#yeni").onclick = () => zimmetPencere(null);
+  ciz();
+};
+function zimmetPencere(id) {
+  const z = id ? (V.zimmet.find(x => x.id === id) || {}) : { id: 0, tarih: bugun(), teslimAlanTip: "personel", personelId: 0, disAd: "", disTesis: "", teslimEden: (V.ayarlar.zimmetTeslimEden || ""), kalemler: [{ malzeme: "", adet: 1 }], aciklama: "" };
+  const kisiler = V.personel.filter(p => p.aktif || p.id === z.personelId).sort((a, c) => a.ad.localeCompare(c.ad, "tr"));
+  pencereAc(
+    "<h2>" + (id ? "Zimmet kaydı" : "Yeni zimmet") + "</h2>" +
+    '<form id="zf" class="form" autocomplete="off">' +
+    '<div><label>Tarih</label><input type="date" name="tarih" value="' + esc(z.tarih) + '"></div>' +
+    '<div><label>Teslim eden (zimmetleyen)</label><input name="teslimEden" value="' + esc(z.teslimEden) + '"></div>' +
+    '<div class="tam"><label>Teslim alan</label><select name="kim"><option value="dis"' + (z.teslimAlanTip === "dis" ? " selected" : "") + ">— Dış tesisten / kadro dışı —</option>" + kisiler.map(p => '<option value="' + p.id + '"' + (z.teslimAlanTip !== "dis" && p.id === z.personelId ? " selected" : "") + ">" + esc(p.ad) + (p.bina ? " — " + esc(p.bina) : "") + "</option>").join("") + "</select></div>" +
+    '<div id="disAlan" class="tam" style="' + (z.teslimAlanTip === "dis" ? "" : "display:none") + '"><div class="form" style="grid-template-columns:1fr 1fr"><div><label>Dış kişi adı</label><input name="disAd" value="' + esc(z.disAd) + '"></div><div><label>Geldiği tesis</label><input name="disTesis" value="' + esc(z.disTesis) + '"></div></div></div>' +
+    '<div class="tam"><label>Verilen malzemeler</label><div id="zKalemler"></div><button type="button" class="kucuk" id="zEkle">+ Satır ekle</button></div>' +
+    '<div class="tam"><label>Açıklama</label><input name="aciklama" value="' + esc(z.aciklama) + '"></div>' +
+    "</form>" +
+    '<div class="pencere-alt">' + (id ? '<button class="sol tehlike" id="zSil">Sil</button>' : "") + '<button id="zIptal">Vazgeç</button><button class="ana" id="zKaydet">Kaydet</button></div>');
+  const f = $("#zf");
+  f.elements.kim.onchange = () => { $("#disAlan").style.display = f.elements.kim.value === "dis" ? "" : "none"; };
+  const kutu = $("#zKalemler");
+  const satirHtml = k => '<div class="zk" style="display:flex;gap:6px;margin-bottom:6px"><input class="zkMal" placeholder="Malzeme" value="' + esc(k.malzeme || "") + '" style="flex:1"><input class="zkAdet" type="number" min="0" step="1" value="' + esc(k.adet == null ? 1 : k.adet) + '" style="width:90px" placeholder="Adet"><button type="button" class="kucuk tehlike zkSil" title="Satırı çıkar">✕</button></div>';
+  const silBagla = () => $$(".zkSil", kutu).forEach(b => b.onclick = () => { if (kutu.children.length > 1) b.closest(".zk").remove(); });
+  kutu.innerHTML = ((z.kalemler && z.kalemler.length) ? z.kalemler : [{ malzeme: "", adet: 1 }]).map(satirHtml).join(""); silBagla();
+  $("#zEkle").onclick = () => { kutu.insertAdjacentHTML("beforeend", satirHtml({ malzeme: "", adet: 1 })); silBagla(); };
+  $("#zIptal").onclick = pencereKapat;
+  if (id) $("#zSil").onclick = async () => { if (!confirm("Bu zimmet kaydı silinsin mi?")) return; V.zimmet = V.zimmet.filter(x => x.id !== id); if (await kaydet("zimmet")) { try { await zimmetListeExcel(); } catch (e) {} pencereKapat(); bildir("Zimmet silindi."); git(); } };
+  $("#zKaydet").onclick = async () => {
+    const g = n => f.elements[n].value.trim();
+    const kalemler = $$(".zk", kutu).map(d => ({ malzeme: $(".zkMal", d).value.trim(), adet: +$(".zkAdet", d).value || 0 })).filter(k => k.malzeme);
+    if (!kalemler.length) { bildir("En az bir malzeme gir.", true); return; }
+    const kim = f.elements.kim.value;
+    const yeni = Object.assign({}, z, { tarih: g("tarih") || bugun(), teslimEden: g("teslimEden"), aciklama: g("aciklama"), kalemler });
+    if (kim === "dis") { yeni.teslimAlanTip = "dis"; yeni.personelId = 0; yeni.disAd = g("disAd"); yeni.disTesis = g("disTesis"); if (!yeni.disAd) { bildir("Dış kişinin adını gir.", true); return; } }
+    else { yeni.teslimAlanTip = "personel"; yeni.personelId = +kim; yeni.disAd = ""; yeni.disTesis = ""; }
+    if (!id) { yeni.id = yeniId(V.zimmet); V.zimmet.push(yeni); } else V.zimmet[V.zimmet.findIndex(x => x.id === id)] = yeni;
+    if (!await kaydet("zimmet")) return;
+    if (yeni.teslimEden && V.ayarlar.zimmetTeslimEden !== yeni.teslimEden) { V.ayarlar = Object.assign({}, V.ayarlar, { zimmetTeslimEden: yeni.teslimEden }); await kaydet("ayarlar"); }
+    await zimmetExceller(yeni);
+    pencereKapat(); bildir("Zimmet kaydedildi; Excel 10-ZİMMET klasörüne yazıldı."); git();
+  };
 }
 
 /* ---------------- Tesisler ---------------- */
