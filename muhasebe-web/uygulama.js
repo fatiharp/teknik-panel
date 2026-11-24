@@ -923,7 +923,7 @@ async function xlsxBlob(sayfaAdi, satirlar) {
   return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE" });
 }
 function zimmetTeslimAlan(z) { return z.teslimAlanTip === "dis" ? (z.disAd || "(isim yok)") : ((personelBul(z.personelId) || {}).ad || "(silinmiş personel)"); }
-function zimmetMalzemeOzet(z) { return (z.kalemler || []).map(k => k.malzeme + (k.adet ? " (" + sayi(k.adet) + ")" : "")).join(", "); }
+function zimmetMalzemeOzet(z) { return (z.kalemler || []).map(k => k.malzeme + (+k.adet > 1 ? " ×" + sayi(k.adet) : "")).join(", "); }
 function zimmetTarihDosya(s) { const d = tarihNesne(s) || new Date(); return d.getFullYear() + "." + iki(d.getMonth() + 1) + "." + iki(d.getDate()); }
 async function zimmetListeExcel() {
   const ls = [[{ v: "S.No", s: 2 }, { v: "Tarih", s: 2 }, { v: "Teslim Alan", s: 2 }, { v: "Tesis / Durum", s: 2 }, { v: "Malzeme", s: 2 }, { v: "Adet", s: 2 }, { v: "Teslim Eden", s: 2 }, { v: "Açıklama", s: 2 }]];
@@ -1009,8 +1009,8 @@ async function zimmetSil(id) {
 let zimmetArama = "";
 SAYFALAR.zimmet = function () {
   $("#icerik").innerHTML =
-    '<div class="ust"><h1>Zimmet</h1><input class="ara" id="ara" placeholder="Ara: kişi, malzeme…" value="' + esc(zimmetArama) + '"><button class="ana" id="yeni">+ Yeni zimmet</button> <button id="zExcel">📊 Toplu liste</button> <button id="zYaz">📁 Tutanakları klasöre yaz</button></div>' +
-    '<div class="not" style="margin-top:-6px;margin-bottom:12px">Kişiye göre gruplu — başlığa tıkla aç/kapat, teslim satırına tıkla düzenle. Kaydedince resmi tutanak <b>10-ZİMMET → Kişi Adı</b> klasörüne yazılır (dış tesisler → <b>DIŞ TESİSLER</b>).</div>' +
+    '<div class="ust"><h1>Zimmet</h1><input class="ara" id="ara" placeholder="Ara: kişi, malzeme…" value="' + esc(zimmetArama) + '"><button class="ana" id="yeni">+ Yeni zimmet</button> <button id="zAc">⊕ Tümünü aç</button> <button id="zExcel">📊 Toplu liste</button> <button id="zYaz">📁 Tutanakları klasöre yaz</button></div>' +
+    '<div class="not" style="margin-top:-6px;margin-bottom:12px">Kişi başlığına tıkla malzemeleri aç/kapat. Teslim satırına tıkla düzenle. Kaydedince resmi tutanak <b>10-ZİMMET → Kişi Adı</b> klasörüne yazılır (dış tesisler → <b>DIŞ TESİSLER</b>).</div>' +
     '<div class="kartlar" id="ozet"></div>' +
     '<div id="liste"></div>';
   const ciz = () => {
@@ -1028,7 +1028,7 @@ SAYFALAR.zimmet = function () {
       const ks = gruplar[ad].slice().sort((x, y) => (x.tarih || "") < (y.tarih || "") ? 1 : -1);
       const toplamKalem = ks.reduce((t, z) => t + (z.kalemler || []).reduce((s, k) => s + (+k.adet || 0), 0), 0);
       const dis = ks[0].teslimAlanTip === "dis";
-      return '<details class="kutu pgrup" open><summary class="pbas"><h2>' + esc(ad) + '</h2>' + (dis ? '<span class="dpill">dış tesis</span>' : "") + '<span class="not sag-ozet">' + ks.length + ' teslim · ' + toplamKalem + ' adet</span></summary>' +
+      return '<details class="kutu pgrup"' + (a ? ' open' : '') + '><summary class="pbas"><h2>' + esc(ad) + '</h2>' + (dis ? '<span class="dpill">dış tesis</span>' : "") + '<span class="not sag-ozet">' + ks.length + ' teslim · ' + toplamKalem + ' adet</span></summary>' +
         '<table class="ptablo"><thead><tr><th style="width:118px">Tarih</th><th>Malzemeler</th><th style="width:150px">Teslim eden</th><th style="width:44px"></th></tr></thead><tbody>' +
         ks.map(z => '<tr class="tikla" data-id="' + z.id + '"><td style="white-space:nowrap">' + (z.tarih ? goster(z.tarih) : '<span class="not">tarih yok</span>') + '</td><td>' + esc(zimmetMalzemeOzet(z)) + '</td><td class="not">' + esc(z.teslimEden || "") + '</td><td class="sag"><button class="kucuk tehlike" data-zsil="' + z.id + '" title="Sil (Excel de silinir)">🗑</button></td></tr>').join("") +
         '</tbody></table></details>';
@@ -1038,6 +1038,7 @@ SAYFALAR.zimmet = function () {
   };
   $("#ara").oninput = e => { zimmetArama = e.target.value; ciz(); };
   $("#yeni").onclick = () => zimmetPencere(null);
+  $("#zAc").onclick = () => { const ds = $$("#liste details"); const hepsiAcik = ds.length && ds.every(d => d.open); ds.forEach(d => d.open = !hepsiAcik); $("#zAc").textContent = hepsiAcik ? "⊕ Tümünü aç" : "⊖ Tümünü kapat"; };
   $("#zExcel").onclick = async () => { try { bildir("Excel hazırlanıyor…"); await zimmetListeExcel(); bildir("ZİMMET KAYITLARI.xlsx güncellendi (10-ZİMMET)."); } catch (e) { bildir("Excel yazılamadı: " + e.message, true); } };
   $("#zYaz").onclick = zimmetTumTutanaklariYaz;
   ciz();
@@ -1195,7 +1196,7 @@ function mesaiOzet(pid) {
 }
 SAYFALAR.mesai = function () {
   const [y, a] = mesaiAy.split("-").map(Number);
-  const gunler = mesaiGunleri(mesaiAy, mesaiTumGunler), kisiler = mesaiKisiler();
+  const gunler = mesaiGunleri(mesaiAy, true), kisiler = mesaiKisiler();
   const aktifHepsi = V.personel.filter(p => p.aktif);
   const hucre = (p, d) => {
     const m = mesaiKayit(p.id, d.t), iz = mesaiIzinde(p.id, d.t);
@@ -1203,8 +1204,8 @@ SAYFALAR.mesai = function () {
     if (m && m.durum === "geldi") { ic = "✔" + (+m.saat !== MESAI_SAAT ? '<div style="font-size:10px">' + sayi(m.saat) + "s</div>" : ""); stil = "background:#d9f2dc;color:#1e7b34;font-weight:700"; }
     else if (m && m.durum === "gelmedi") { ic = "✗"; stil = "background:#fde2e2;color:#c0392b;font-weight:700"; }
     else if (m && m.durum === "plan") { ic = "📋"; stil = "background:#fff4d6"; }
-    else if (iz) { const kd = izinGunKodu(iz, d.t), izinGunu = kd === (IZIN_KOD[iz.tur] || "İİ"); ic = '<span style="font-size:11px;font-weight:700;color:' + (izinGunu ? "#6b4e9b" : "#8a96a3") + '">' + kd + "</span>"; stil = izinGunu ? "background:#f1ebfa" : "background:#f4f6f8"; }
-    else { const kd = d.gun === 0 ? "HT" : (d.gun === 6 && !V.ayarlar.cumartesiIsGunu) ? "AT" : d.tatil ? "RT" : ""; if (kd) { ic = '<span style="font-size:11px;font-weight:700;color:#8a96a3">' + kd + "</span>"; stil = "background:#f4f6f8"; } }
+    else if (iz) { let kd = izinGunKodu(iz, d.t); if (kd === "AT" || kd === "HT") kd = IZIN_KOD[iz.tur] || "İİ"; const izinGunu = kd === (IZIN_KOD[iz.tur] || "İİ"); ic = '<span style="font-size:11px;font-weight:700;color:' + (izinGunu ? "#6b4e9b" : "#8a96a3") + '">' + kd + "</span>"; stil = izinGunu ? "background:#f1ebfa" : "background:#f4f6f8"; }
+    else { const kd = d.tatil ? "RT" : ""; if (kd) { ic = '<span style="font-size:11px;font-weight:700;color:#8a96a3">' + kd + "</span>"; stil = "background:#f4f6f8"; } }
     return '<td class="mh" data-p="' + p.id + '" data-t="' + d.t + '" title="' + esc(p.ad) + " · " + goster(d.t) + (iz ? " · " + esc(iz.tur) : "") + (m && m.not ? " · " + esc(m.not) : "") + '" style="text-align:center;cursor:pointer;border:1px solid #e3e8ee;min-width:38px;' +
       (d.hs || d.tatil ? "" : "") + stil + '">' + ic + "</td>";
   };
@@ -1223,17 +1224,16 @@ SAYFALAR.mesai = function () {
   $("#icerik").innerHTML =
     '<div class="ust"><h1>Mesai Takibi</h1>' +
     '<div style="display:flex;align-items:center;gap:6px"><button id="mOnce" title="Önceki ay">‹</button><b style="min-width:120px;text-align:center">' + AYLAR[a - 1] + " " + y + '</b><button id="mSonra" title="Sonraki ay">›</button></div>' +
-    '<label class="not" style="margin-left:12px"><input type="checkbox" id="mTum"' + (mesaiTumGunler ? " checked" : "") + "> Tüm günleri göster</label>" +
     '<button class="ana" id="mExcel" style="margin-left:auto">📄 Excel\'e aktar</button></div>' +
     '<div class="ust" style="margin-top:-4px"><div class="sekmeler" id="mGrup">' +
     '<button data-g=""' + (!mesaiGrup ? ' class="secili"' : "") + ">Tümü (" + aktifHepsi.length + ")</button>" +
     GRUPLAR.filter(g => aktifHepsi.some(p => sirketKlasoru(p) === g[0])).map(g => '<button data-g="' + g[0] + '"' + (mesaiGrup === g[0] ? ' class="secili"' : "") + ">" + g[1] + " (" + aktifHepsi.filter(p => sirketKlasoru(p) === g[0]).length + ")</button>").join("") +
     "</div></div>" +
-    '<div class="not" style="margin:-2px 0 8px">Kutuya tıkla → 📋 Planlı / ✔ Geldi / ✗ Gelmedi seç ya da izin türü (Yİ, R, Öİ…) gir. Gün başlığına tıkla → o günü herkes için toplu işaretle. Sadece <b style="color:#1e7b34">✔ Geldi</b> olanlar mesai sayılır.' + (mesaiTumGunler ? "" : " Hafta sonları, resmi tatiller ve kaydı olan günler görünüyor.") + "</div>" +
+    '<div class="not" style="margin:-2px 0 8px">Kutuya tıkla → 📋 Planlı / ✔ Geldi / ✗ Gelmedi seç ya da izin türü (Yİ, R, Öİ…) gir. Gün başlığına tıkla → o günü herkes için toplu işaretle. Sadece <b style="color:#1e7b34">✔ Geldi</b> olanlar mesai sayılır. Ayın tüm günleri görünür.</div>' +
     '<div class="kutu" style="padding:8px;overflow:auto"><table style="border-collapse:collapse;font-size:13px">' +
     '<thead><tr><th style="text-align:left;padding:6px 8px;border:1px solid #e3e8ee;position:sticky;left:0;background:#fff">Personel</th>' +
     gunler.map(d => '<th class="mg" data-t="' + d.t + '" title="' + goster(d.t) + ' — tıkla, bu günü toplu işaretle" style="cursor:pointer;padding:4px 3px;border:1px solid #e3e8ee;font-size:11px;line-height:1.2;' +
-      (d.tatil ? "background:#fde2e2;color:#c0392b" : d.hs ? "background:#e3effb;color:#1F4E78" : "background:#f7f9fb") + '">' + KISA_GUN[d.gun] + "<br><b style=\"font-size:13px\">" + d.g + "</b></th>").join("") +
+      (d.tatil ? "background:#fde2e2;color:#c0392b" : "background:#f7f9fb") + '">' + KISA_GUN[d.gun] + "<br><b style=\"font-size:13px\">" + d.g + "</b></th>").join("") +
     '<th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Gün</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Saat</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#fdecec;color:#c0392b">Gelmedi</th></tr></thead>' +
     "<tbody>" + (satirlar || '<tr><td colspan="' + (gunler.length + 4) + '" class="bos">Bu grupta personel yok.</td></tr>') + "</tbody>" +
     '<tfoot><tr><td style="padding:5px 8px;border:1px solid #e3e8ee;font-weight:700;text-align:right">Gelen kişi</td>' + gunler.map(d => { const n = gunGeldi(d); return '<td style="text-align:center;border:1px solid #e3e8ee;font-weight:700;color:#1e7b34">' + (n || "") + "</td>"; }).join("") +
@@ -1242,7 +1242,6 @@ SAYFALAR.mesai = function () {
     ' · <b style="color:#1e7b34">✔</b> mesaiye geldi · <b style="color:#c0392b">✗</b> mesaiye gelmedi · 📋 mesai planlı</div>';
   const ayKaydir = n => { const d = new Date(y, a - 1 + n, 1); mesaiAy = d.getFullYear() + "-" + iki(d.getMonth() + 1); SAYFALAR.mesai(); };
   $("#mOnce").onclick = () => ayKaydir(-1); $("#mSonra").onclick = () => ayKaydir(1);
-  $("#mTum").onchange = e => { mesaiTumGunler = e.target.checked; SAYFALAR.mesai(); };
   $$("#mGrup [data-g]").forEach(b => b.onclick = () => { mesaiGrup = b.dataset.g; SAYFALAR.mesai(); });
   $$("#icerik .mh").forEach(td => td.onclick = () => mesaiHucrePencere(+td.dataset.p, td.dataset.t));
   $$("#icerik .mg").forEach(th => th.onclick = () => mesaiGunPencere(th.dataset.t));
