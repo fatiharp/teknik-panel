@@ -1204,8 +1204,8 @@ SAYFALAR.mesai = function () {
     if (m && m.durum === "geldi") { ic = "✔" + (+m.saat !== MESAI_SAAT ? '<div style="font-size:10px">' + sayi(m.saat) + "s</div>" : ""); stil = "background:#d9f2dc;color:#1e7b34;font-weight:700"; }
     else if (m && m.durum === "gelmedi") { ic = "✗"; stil = "background:#fde2e2;color:#c0392b;font-weight:700"; }
     else if (m && m.durum === "plan") { ic = "📋"; stil = "background:#fff4d6"; }
-    else if (iz) { let kd = izinGunKodu(iz, d.t); if (kd === "AT" || kd === "HT") kd = IZIN_KOD[iz.tur] || "İİ"; const izinGunu = kd === (IZIN_KOD[iz.tur] || "İİ"); ic = '<span style="font-size:11px;font-weight:700;color:' + (izinGunu ? "#6b4e9b" : "#8a96a3") + '">' + kd + "</span>"; stil = izinGunu ? "background:#f1ebfa" : "background:#f4f6f8"; }
-    else { const kd = d.tatil ? "RT" : ""; if (kd) { ic = '<span style="font-size:11px;font-weight:700;color:#8a96a3">' + kd + "</span>"; stil = "background:#f4f6f8"; } }
+    else if (iz) { const kd = izinGunKodu(iz, d.t), izinGunu = kd === (IZIN_KOD[iz.tur] || "İİ"); ic = '<span style="font-size:11px;font-weight:700;color:' + (izinGunu ? "#6b4e9b" : "#8a96a3") + '">' + kd + "</span>"; stil = izinGunu ? "background:#f1ebfa" : "background:#f4f6f8"; }
+    else { const kd = d.gun === 0 ? "HT" : (d.gun === 6 && !V.ayarlar.cumartesiIsGunu) ? "AT" : d.tatil ? "RT" : ""; if (kd) { ic = '<span style="font-size:11px;font-weight:700;color:#8a96a3">' + kd + "</span>"; stil = "background:#f4f6f8"; } }
     return '<td class="mh" data-p="' + p.id + '" data-t="' + d.t + '" title="' + esc(p.ad) + " · " + goster(d.t) + (iz ? " · " + esc(iz.tur) : "") + (m && m.not ? " · " + esc(m.not) : "") + '" style="text-align:center;cursor:pointer;border:1px solid #e3e8ee;min-width:38px;' +
       (d.hs || d.tatil ? "" : "") + stil + '">' + ic + "</td>";
   };
@@ -1233,7 +1233,7 @@ SAYFALAR.mesai = function () {
     '<div class="kutu" style="padding:8px;overflow:auto"><table style="border-collapse:collapse;font-size:13px">' +
     '<thead><tr><th style="text-align:left;padding:6px 8px;border:1px solid #e3e8ee;position:sticky;left:0;background:#fff">Personel</th>' +
     gunler.map(d => '<th class="mg" data-t="' + d.t + '" title="' + goster(d.t) + ' — tıkla, bu günü toplu işaretle" style="cursor:pointer;padding:4px 3px;border:1px solid #e3e8ee;font-size:11px;line-height:1.2;' +
-      (d.tatil ? "background:#fde2e2;color:#c0392b" : "background:#f7f9fb") + '">' + KISA_GUN[d.gun] + "<br><b style=\"font-size:13px\">" + d.g + "</b></th>").join("") +
+      (d.tatil ? "background:#fde2e2;color:#c0392b" : d.hs ? "background:#e3effb;color:#1F4E78" : "background:#f7f9fb") + '">' + KISA_GUN[d.gun] + "<br><b style=\"font-size:13px\">" + d.g + "</b></th>").join("") +
     '<th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Gün</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#e8f5ea">Saat</th><th style="padding:4px 6px;border:1px solid #e3e8ee;background:#fdecec;color:#c0392b">Gelmedi</th></tr></thead>' +
     "<tbody>" + (satirlar || '<tr><td colspan="' + (gunler.length + 4) + '" class="bos">Bu grupta personel yok.</td></tr>') + "</tbody>" +
     '<tfoot><tr><td style="padding:5px 8px;border:1px solid #e3e8ee;font-weight:700;text-align:right">Gelen kişi</td>' + gunler.map(d => { const n = gunGeldi(d); return '<td style="text-align:center;border:1px solid #e3e8ee;font-weight:700;color:#1e7b34">' + (n || "") + "</td>"; }).join("") +
