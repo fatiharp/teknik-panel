@@ -936,35 +936,72 @@ async function zimmetListeExcel() {
   const r = await DK.dosyaYazResp("10-ZİMMET\\ZİMMET KAYITLARI.xlsx", blob, true);
   const c = await r.json(); if (!r.ok) throw new Error(c.hata || "liste yazılamadı");
 }
-async function zimmetExceller(z) {
-  try {
-    const al = zimmetTeslimAlan(z), pr = [];
-    pr.push([{ v: "ZİMMET / TESLİM TUTANAĞI", s: 1 }]);
-    pr.push([{ v: "Tarih:", s: 1 }, { v: goster(z.tarih) }]);
-    pr.push([{ v: "Teslim alan:", s: 1 }, { v: al }]);
-    if (z.teslimAlanTip === "dis") pr.push([{ v: "Geldiği tesis:", s: 1 }, { v: z.disTesis || "" }]);
-    pr.push([{ v: "Teslim eden:", s: 1 }, { v: z.teslimEden || "" }]);
-    pr.push([]);
-    pr.push([{ v: "Sıra", s: 2 }, { v: "Malzeme", s: 2 }, { v: "Adet", s: 2 }]);
-    (z.kalemler || []).forEach((k, n) => pr.push([{ v: n + 1, s: 3, sayi: true }, { v: k.malzeme, s: 3 }, { v: k.adet, s: 3, sayi: true }]));
-    pr.push([]);
-    if (z.aciklama) pr.push([{ v: "Açıklama:", s: 1 }, { v: z.aciklama }]);
-    pr.push([]); pr.push([]);
-    pr.push([{ v: "Teslim Eden", s: 1 }, null, { v: "Teslim Alan", s: 1 }]);
-    pr.push([{ v: z.teslimEden || "" }, null, { v: al }]);
-    const blob = await xlsxBlob("Zimmet", pr);
-    const ad = "ZİMMET-" + z.id + " - " + zimmetTarihDosya(z.tarih) + " - " + al;
-    const r = await DK.dosyaYazResp("10-ZİMMET\\" + dosyaAdi(ad) + ".xlsx", blob, true);
+// Tutanak klasörü: personel → kişi adı klasörü, dış → "DIŞ TESİSLER" klasörü
+function zimmetKlasor(z) {
+  return "10-ZİMMET\\" + (z.teslimAlanTip === "dis" ? "DIŞ TESİSLER" : dosyaAdi(zimmetTeslimAlan(z)));
+}
+// Resmi "Teknik Malzeme Zimmet Tutanağı" şablonunu (sablonlar/zimmet_tutanak.xlsx) doldurur.
+// 9'dan çok kalem varsa birden çok sayfa (dosya) üretir. Döner: [{blob, ek}]
+async function zimmetTutanaklar(z) {
+  if (typeof JSZip === "undefined") throw new Error("Excel aracı yüklenemedi (internet gerekebilir).");
+  const ab = await (await fetch("sablonlar/zimmet_tutanak.xlsx", { cache: "force-cache" })).arrayBuffer();
+  const al = zimmetTeslimAlan(z), tarih = z.tarih ? goster(z.tarih) : "__ / __ / ______";
+  const kalemler = z.kalemler || [], sayfa = Math.max(1, Math.ceil(kalemler.length / 9));
+  const xmlEsc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const cikti = [];
+  for (let s = 0; s < sayfa; s++) {
+    const dilim = kalemler.slice(s * 9, s * 9 + 9), deger = {};
+    deger["E2"] = { v: tarih, s: 7 };
+    for (let i = 0; i < 9; i++) { const k = dilim[i]; deger["B" + (4 + i)] = { v: k ? k.malzeme : "", s: 4 }; deger["F" + (4 + i)] = { v: k && k.adet != null && k.adet !== "" ? sayi(k.adet) : "", s: 3 }; }
+    deger["A13"] = { v: "Teslim Eden\nAdı Soyadı / İmza: " + (z.teslimEden || ""), s: 5 };
+    deger["D13"] = { v: "Teslim Alan\nAdı Soyadı / İmza: " + al, s: 5 };
+    const zip = await JSZip.loadAsync(ab), yolXml = "xl/worksheets/sheet1.xml";
+    let xml = await zip.file(yolXml).async("string");
+    Object.keys(deger).forEach(ref => {
+      const c = deger[ref], metin = xmlEsc(c.v).replace(/\r?\n/g, "&#10;");
+      const yeni = '<c r="' + ref + '" s="' + c.s + '" t="inlineStr"><is><t xml:space="preserve">' + metin + '</t></is></c>';
+      const re = new RegExp('<c r="' + ref + '"[^>]*?/>|<c r="' + ref + '"[^>]*?>[\\s\\S]*?</c>');
+      xml = xml.replace(re, yeni);
+    });
+    zip.file(yolXml, xml);
+    const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE" });
+    cikti.push({ blob, ek: sayfa > 1 ? " (" + (s + 1) + ")" : "" });
+  }
+  return cikti;
+}
+// Bir kaydın tutanak(lar)ını kişi klasörüne yazar (üstüne yazar)
+async function zimmetYaz(z) {
+  const parcalar = await zimmetTutanaklar(z), klasor = zimmetKlasor(z), al = zimmetTeslimAlan(z);
+  const adBase = "ZİMMET-" + z.id + " - " + zimmetTarihDosya(z.tarih) + " - " + al;
+  for (const p of parcalar) {
+    const hedef = klasor + "\\" + dosyaAdi(adBase + p.ek) + ".xlsx";
+    const r = await DK.dosyaYazResp(hedef, p.blob, true);
     const c = await r.json(); if (!r.ok) throw new Error(c.hata || "tutanak yazılamadı");
-    await zimmetListeExcel();
-  } catch (e) { bildir("Excel kaydedilemedi: " + e.message, true); }
+  }
+}
+async function zimmetExceller(z) {
+  try { await zimmetYaz(z); await zimmetListeExcel(); }
+  catch (e) { bildir("Excel kaydedilemedi: " + e.message, true); }
+}
+// Tüm kayıtların tutanaklarını kişi klasörlerine yeniden yazar (geçmiş aktarılan kayıtlar için tek tık)
+async function zimmetTumTutanaklariYaz() {
+  const list = V.zimmet || [];
+  if (!list.length) { bildir("Kayıt yok."); return; }
+  if (!confirm("Tüm zimmet tutanakları (" + list.length + " kayıt) kişiye göre klasörlere yeniden yazılacak.\nEski düz yerleşimdeki tutanaklar temizlenecek. Devam edilsin mi?")) return;
+  bildir("Tutanaklar hazırlanıyor, lütfen bekle…");
+  try { const dl = await DK.klasorListe("10-ZİMMET"); for (const d of dl) { if (/^ZİMMET-\d+ - /.test(d.ad)) { try { await DK.dosyaSil(d.yol); } catch (e) {} } } } catch (e) {}
+  let n = 0, hata = 0;
+  for (const z of list) { try { await zimmetYaz(z); n++; } catch (e) { hata++; } }
+  try { await zimmetListeExcel(); } catch (e) {}
+  bildir(n + " tutanak kişi klasörlerine yazıldı" + (hata ? " (" + hata + " hata)" : "") + " · 10-ZİMMET", hata > 0);
 }
 async function zimmetSil(id) {
   const z = V.zimmet.find(x => x.id === id); if (!z) return false;
-  if (!confirm("Bu zimmet kaydı silinsin mi?\n\n" + zimmetTeslimAlan(z) + " — " + zimmetMalzemeOzet(z) + "\n\n⚠ Bu teslime ait tutanak Excel'i de 10-ZİMMET klasöründen KALICI silinir.")) return false;
+  if (!confirm("Bu zimmet kaydı silinsin mi?\n\n" + zimmetTeslimAlan(z) + " — " + zimmetMalzemeOzet(z) + "\n\n⚠ Bu teslime ait tutanak Excel'i de klasörden KALICI silinir.")) return false;
+  const klasor = zimmetKlasor(z);
   V.zimmet = V.zimmet.filter(x => x.id !== id);
   if (!await kaydet("zimmet")) return false;
-  try { const dl = await DK.klasorListe("10-ZİMMET"); for (const d of dl) { if (d.ad.indexOf("ZİMMET-" + id + " - ") === 0) { try { await DK.dosyaSil(d.yol); } catch (e) {} } } } catch (e) {}
+  for (const kl of [klasor, "10-ZİMMET"]) { try { const dl = await DK.klasorListe(kl); for (const d of dl) { if (d.ad.indexOf("ZİMMET-" + id + " - ") === 0) { try { await DK.dosyaSil(d.yol); } catch (e) {} } } } catch (e) {} }
   try { await zimmetListeExcel(); } catch (e) {}
   bildir("Zimmet kaydı ve tutanağı silindi.");
   return true;
@@ -972,23 +1009,29 @@ async function zimmetSil(id) {
 let zimmetArama = "";
 SAYFALAR.zimmet = function () {
   $("#icerik").innerHTML =
-    '<div class="ust"><h1>Zimmet</h1><input class="ara" id="ara" placeholder="Ara: kişi, malzeme…" value="' + esc(zimmetArama) + '"><button class="ana" id="yeni">+ Yeni zimmet</button> <button id="zExcel">📊 Excel\'e aktar</button></div>' +
-    '<div class="not" style="margin-top:-4px">Kişiye göre gruplu; her kişinin aldığı malzemeler tarih tarih listelenir. Kaydedince tutanak + toplu liste <b>10-ZİMMET</b> klasörüne Excel yazılır.</div>' +
-    '<div id="liste" style="margin-top:10px"></div>';
+    '<div class="ust"><h1>Zimmet</h1><input class="ara" id="ara" placeholder="Ara: kişi, malzeme…" value="' + esc(zimmetArama) + '"><button class="ana" id="yeni">+ Yeni zimmet</button> <button id="zExcel">📊 Toplu liste</button> <button id="zYaz">📁 Tutanakları klasöre yaz</button></div>' +
+    '<div class="not" style="margin-top:-6px;margin-bottom:12px">Kişiye göre gruplu — başlığa tıkla aç/kapat, teslim satırına tıkla düzenle. Kaydedince resmi tutanak <b>10-ZİMMET → Kişi Adı</b> klasörüne yazılır (dış tesisler → <b>DIŞ TESİSLER</b>).</div>' +
+    '<div class="kartlar" id="ozet"></div>' +
+    '<div id="liste"></div>';
   const ciz = () => {
     const a = trKucuk(zimmetArama);
     const l = (V.zimmet || []).filter(z => !a || trKucuk([zimmetTeslimAlan(z), z.disTesis, z.teslimEden, (z.kalemler || []).map(k => k.malzeme).join(" ")].join(" ")).includes(a));
     const gruplar = {};
     l.forEach(z => { const ad = zimmetTeslimAlan(z); (gruplar[ad] = gruplar[ad] || []).push(z); });
     const adlar = Object.keys(gruplar).sort((x, y) => x.localeCompare(y, "tr"));
+    const toplamAdet = l.reduce((t, z) => t + (z.kalemler || []).reduce((s, k) => s + (+k.adet || 0), 0), 0);
+    $("#ozet").innerHTML = l.length ?
+      '<div class="kart"><div class="sayi">' + adlar.length + '</div><div class="etiket">Kişi / tesis</div></div>' +
+      '<div class="kart"><div class="sayi">' + l.length + '</div><div class="etiket">Teslim kaydı</div></div>' +
+      '<div class="kart"><div class="sayi">' + toplamAdet + '</div><div class="etiket">Toplam malzeme (adet)</div></div>' : "";
     $("#liste").innerHTML = adlar.length ? adlar.map(ad => {
       const ks = gruplar[ad].slice().sort((x, y) => (x.tarih || "") < (y.tarih || "") ? 1 : -1);
       const toplamKalem = ks.reduce((t, z) => t + (z.kalemler || []).reduce((s, k) => s + (+k.adet || 0), 0), 0);
       const dis = ks[0].teslimAlanTip === "dis";
-      return '<div class="kutu pgrup"><div class="pbas"><h2>' + esc(ad) + (dis ? ' <span class="not">(dış)</span>' : "") + '</h2><span class="not">' + ks.length + " teslim · " + toplamKalem + " adet malzeme</span></div>" +
-        '<table class="ptablo"><thead><tr><th style="width:120px">Tarih</th><th>Malzemeler</th><th style="width:160px">Teslim eden</th><th style="width:44px"></th></tr></thead><tbody>' +
-        ks.map(z => '<tr class="tikla" data-id="' + z.id + '"><td style="white-space:nowrap">' + (z.tarih ? goster(z.tarih) : '<span class="not">tarih yok</span>') + "</td><td>" + esc(zimmetMalzemeOzet(z)) + '</td><td class="not">' + esc(z.teslimEden || "") + '</td><td class="sag"><button class="kucuk tehlike" data-zsil="' + z.id + '" title="Sil (Excel de silinir)">🗑</button></td></tr>').join("") +
-        "</tbody></table></div>";
+      return '<details class="kutu pgrup" open><summary class="pbas"><h2>' + esc(ad) + '</h2>' + (dis ? '<span class="dpill">dış tesis</span>' : "") + '<span class="not sag-ozet">' + ks.length + ' teslim · ' + toplamKalem + ' adet</span></summary>' +
+        '<table class="ptablo"><thead><tr><th style="width:118px">Tarih</th><th>Malzemeler</th><th style="width:150px">Teslim eden</th><th style="width:44px"></th></tr></thead><tbody>' +
+        ks.map(z => '<tr class="tikla" data-id="' + z.id + '"><td style="white-space:nowrap">' + (z.tarih ? goster(z.tarih) : '<span class="not">tarih yok</span>') + '</td><td>' + esc(zimmetMalzemeOzet(z)) + '</td><td class="not">' + esc(z.teslimEden || "") + '</td><td class="sag"><button class="kucuk tehlike" data-zsil="' + z.id + '" title="Sil (Excel de silinir)">🗑</button></td></tr>').join("") +
+        '</tbody></table></details>';
     }).join("") : '<div class="kutu bos">Kayıt yok. "+ Yeni zimmet" ile ekle.</div>';
     $$("#liste [data-id]").forEach(t => t.onclick = e => { if (!e.target.dataset.zsil) zimmetPencere(+t.dataset.id); });
     $$("#liste [data-zsil]").forEach(b => b.onclick = async ev => { ev.stopPropagation(); if (await zimmetSil(+b.dataset.zsil)) git(); });
@@ -996,6 +1039,7 @@ SAYFALAR.zimmet = function () {
   $("#ara").oninput = e => { zimmetArama = e.target.value; ciz(); };
   $("#yeni").onclick = () => zimmetPencere(null);
   $("#zExcel").onclick = async () => { try { bildir("Excel hazırlanıyor…"); await zimmetListeExcel(); bildir("ZİMMET KAYITLARI.xlsx güncellendi (10-ZİMMET)."); } catch (e) { bildir("Excel yazılamadı: " + e.message, true); } };
+  $("#zYaz").onclick = zimmetTumTutanaklariYaz;
   ciz();
 };
 function zimmetPencere(id) {

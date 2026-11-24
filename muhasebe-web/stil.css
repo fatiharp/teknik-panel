@@ -65,11 +65,20 @@ input[type=checkbox] { width: auto; }
 .sekmeler button.secili { background: var(--mavi); color: #fff; }
 /* Personel sayfası */
 .pgrup { padding: 0; overflow: hidden; }
-.pbas { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 8px; border-bottom: 1px solid var(--cizgi); }
-.pbas h2 { margin: 0; }
+.pbas { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--cizgi); background: #f7f9fb; cursor: pointer; list-style: none; user-select: none; }
+.pbas::-webkit-details-marker { display: none; }
+.pbas::before { content: "▸"; color: var(--soluk); font-size: 12px; transition: transform .12s; }
+.pgrup[open] > .pbas::before { transform: rotate(90deg); }
+.pgrup[open] > .pbas { background: #eef3f8; }
+.pbas:hover { background: #eef3f8; }
+.pbas h2 { margin: 0; font-size: 17px; }
+.pbas .sag-ozet { margin-left: auto; white-space: nowrap; }
+.dpill { font-size: 11px; font-weight: 600; color: #8a5a00; background: #fdeecf; border: 1px solid #f3d9a6; padding: 1px 8px; border-radius: 999px; }
 .ptablo { table-layout: fixed; }
-.ptablo th { position: static; background: #f7f9fb; color: var(--soluk); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+.ptablo th { position: static; background: #fff; color: var(--soluk); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
 .ptablo td { padding: 9px 12px; vertical-align: middle; }
+.ptablo tbody tr:nth-child(even) td { background: #fafbfc; }
+.ptablo tbody tr:hover td { background: #eef3f8; }
 .ptablo tbody tr:last-child td { border-bottom: 0; }
 .pad { font-weight: 600; }
 .palt { font-size: 12px; color: var(--soluk); margin-top: 1px; }

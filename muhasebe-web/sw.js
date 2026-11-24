@@ -2,7 +2,7 @@
    Uygulama kabuğu (html, css, js, simgeler) önbelleğe alınır; kişisel veri önbelleğe GİRMEZ (o klasörde). */
 const AD = "muhasebe-v1";
 const DOSYALAR = ["./", "index.html", "stil.css", "veri_katmani.js", "uygulama.js", "jszip.min.js",
-  "sablonlar/izin_formu.xlsx", "formlar/bogazici-logo1.jpeg", "formlar/bogazici-logo2.jpeg",
+  "sablonlar/izin_formu.xlsx", "sablonlar/zimmet_tutanak.xlsx", "formlar/bogazici-logo1.jpeg", "formlar/bogazici-logo2.jpeg",
   "manifest.webmanifest", "formlar/favicon.png", "formlar/simge-192.png", "formlar/simge-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(AD).then(c => c.addAll(DOSYALAR)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== AD).map(x => caches.delete(x)))).then(() => self.clients.claim())); });
