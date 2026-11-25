@@ -48,7 +48,10 @@ function sef(k) {
   if (v != null && String(v).trim() !== "") return String(v).trim();
   return (a.sefAdi && String(a.sefAdi).trim()) ? (k === "sefFormAdi" ? String(a.sefAdi).trim() : "") : SEF_VARSAYILAN[k];
 }
-function sefBaslikYaz() { const s = document.querySelector("#yan .logo small"); if (s) s.textContent = "Personel İşleri · " + sef("sefAdi"); document.title = "Muhasebe – " + sef("sefAdi"); }
+function sefBaslikYaz() {
+  const s = document.querySelector("#yan .logo small"); if (s) s.textContent = "Personel İşleri · " + sef("sefAdi"); document.title = "Muhasebe – " + sef("sefAdi");
+  const m = document.getElementById("menuSaha"); if (m) m.hidden = !(V.ayarlar && V.ayarlar.sahaRaporu);
+}
 function tarihNesne(s) { if (!s) return null; const p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
 function tarihMetin(d) { return d.getFullYear() + "-" + iki(d.getMonth() + 1) + "-" + iki(d.getDate()); }
 function goster(s) { const d = tarihNesne(s); return d ? iki(d.getDate()) + "." + iki(d.getMonth() + 1) + "." + d.getFullYear() : ""; }
@@ -821,6 +824,8 @@ SAYFALAR.ayarlar = function () {
      ["cirakBirim", "Çırak formu: birimi"], ["cirakDahili", "Çırak formu: dahili numara"], ["cirakImza1Ad", "Çırak formu 1. imza: ad soyad"], ["cirakImza1Unvan", "Çırak formu 1. imza: unvan"],
      ["cirakImza2Ad", "Çırak formu 2. imza: ad soyad"], ["cirakImza2Unvan", "Çırak formu 2. imza: unvan"]]
       .map(([k, l]) => '<div><label>' + l + '</label><input name="' + k + '" value="' + esc(a[k]) + '" placeholder="' + esc(sef(k)) + '"></div>').join("") +
+    '<div><label>📸 Haftalık saha raporu</label><select name="sahaRaporu"><option value="0">Menüde gösterme</option><option value="1"' + (a.sahaRaporu ? " selected" : "") + '>Menüde göster</option></select></div>' +
+    '<div><label>Saha raporu branşları (virgülle ayır)</label><input name="sahaBranslar" value="' + esc(a.sahaBranslar) + '" placeholder="Elektrik, Tesisat, İnşaat, Mekanik"></div>' +
     '<div class="tam"><button class="ana" type="button" id="sKaydet">Kaydet</button></div></form></div>' +
     '<div class="kutu"><div class="ust"><h2 style="flex:1;margin:0">Resmi tatiller</h2><select id="ty" style="width:auto"></select></div>' +
     '<div class="form" style="grid-template-columns:180px 1fr auto;align-items:end;margin-bottom:10px"><div><label>Tarih</label><input type="date" id="tt"></div><div><label>Adı</label><input id="ta" placeholder="ör. Kurban Bayramı 2. gün"></div><button id="tEkle">Ekle</button></div>' +
@@ -857,7 +862,8 @@ SAYFALAR.ayarlar = function () {
   };
   $("#sKaydet").onclick = async () => {
     const y = Object.assign({}, V.ayarlar);
-    Object.keys(SEF_VARSAYILAN).filter(k => k !== "izinAmiri").forEach(k => { const v = $("#sf")[k].value.trim(); if (v) y[k] = v; else delete y[k]; });
+    Object.keys(SEF_VARSAYILAN).filter(k => k !== "izinAmiri").concat(["sahaBranslar"]).forEach(k => { const v = $("#sf")[k].value.trim(); if (v) y[k] = v; else delete y[k]; });
+    if ($("#sf").sahaRaporu.value === "1") y.sahaRaporu = true; else delete y.sahaRaporu;
     V.ayarlar = y;
     if (await kaydet("ayarlar")) { sefBaslikYaz(); bildir("Şeflik bilgileri kaydedildi."); git(); }
   };

@@ -1,7 +1,7 @@
 /* Basit çevrimdışı önbellek: ilk açılıştan sonra internet olmadan da açılsın.
    Uygulama kabuğu (html, css, js, simgeler) önbelleğe alınır; kişisel veri önbelleğe GİRMEZ (o klasörde). */
 const AD = "muhasebe-v1";
-const DOSYALAR = ["./", "index.html", "stil.css", "veri_katmani.js", "uygulama.js", "jszip.min.js",
+const DOSYALAR = ["./", "index.html", "stil.css", "veri_katmani.js", "uygulama.js", "saha.js", "jszip.min.js", "formlar/logo_ibb.png", "formlar/logo_sosyal_tesisler.jpg",
   "sablonlar/izin_formu.xlsx", "sablonlar/zimmet_tutanak.xlsx", "formlar/bogazici-logo1.jpeg", "formlar/bogazici-logo2.jpeg",
   "manifest.webmanifest", "formlar/favicon.png", "formlar/simge-192.png", "formlar/simge-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(AD).then(c => c.addAll(DOSYALAR)).then(() => self.skipWaiting())); });
