@@ -59,7 +59,10 @@ function tesisBul(metin) {
 }
 function bransBul(metin, gonderen) {
   const k = trKucuk(metin), l = sahaBranslar();
-  for (const b of l) { const re = bransDeseni(b); if (re && re.test(k)) return b; }
+  // Önce sözlük sırasıyla (özel → genel: Elektrik, Tesisat, Mutfak, Mekanik, Kaynak, Boya, Marangoz … İnşaat, Bakım)
+  for (const [anahtar, re] of BRANS_SOZLUK) { const b = l.find(x => trBuyuk(x).includes(anahtar)); if (b && re.test(k)) return b; }
+  // Sözlükte olmayan branş adları: adın kökü metinde geçiyorsa
+  for (const b of l) { if (BRANS_SOZLUK.some(([a]) => trBuyuk(b).includes(a))) continue; const re = bransDeseni(b); if (re && re.test(k)) return b; }
   const p = gonderenPersonel(gonderen), g = trBuyuk(p && p.gorev);
   if (g) for (const b of l) { const B = trBuyuk(b); if (g.includes(B.slice(0, Math.max(4, B.length - 2)))) return b; }
   return l[0];
@@ -122,7 +125,9 @@ function isleriCikar(mesajlar, fotoListesi, bas, bit) {
     return null;
   };
   const atla = g => g === "Siz" || g === "You" || (gonderenPersonel(g) && /MEMUR|İDARİ/.test(trBuyuk(gonderenPersonel(g).statu)));
-  // Gönderiler: aynı kişinin arka arkaya (2 dk içinde) attığı fotoğraf + yazılar; fotoğraftan sonra 6 dk içinde gelen yazı da eklenir
+  // Gönderiler: aynı kişinin arka arkaya (2 dk içinde) attığı fotoğraf + yazılar; fotoğraftan sonra 6 dk içinde gelen yazı da eklenir.
+  // Gönderinin içi BLOKLARA ayrılır: fotoğrafın altına yazılan açıklama (WhatsApp'ta resim yazısı) o fotoğrafla KESİN eşleşir;
+  // yazısız fotoğraflar kendinden önceki açıklamalı fotoğrafın bloğuna katılır; fotoğraflardan sonra gelen yazı o fotoğraflara aittir.
   const gonderiler = []; let g = null;
   for (const m of mesajlar) {
     if (m.tarih < bas || m.tarih > bit || m.silindi) continue;
@@ -130,44 +135,83 @@ function isleriCikar(mesajlar, fotoListesi, bas, bit) {
     if (atla(m.gonderen)) continue;
     if (!m.temiz && !m.gorsel) continue;
     if (/^@\S+/.test(m.temiz) && m.temiz.split(/\s+/).length <= 3 && !m.gorsel) continue;
-    const ayni = g && g.gonderen === m.gonderen && (m.zaman - g.sonZaman <= 120000 || (!g.metin.trim() && m.temiz && m.zaman - g.sonZaman <= 360000));
-    if (!ayni) { g = { gonderen: m.gonderen, tarih: m.tarih, saat: m.saat, sonZaman: m.zaman, fotolar: [], metin: "", iletildi: m.iletildi }; gonderiler.push(g); }
+    const blokYazisiz = g && g.bloklar.length && !g.bloklar[g.bloklar.length - 1].metin.trim();
+    const ayni = g && g.gonderen === m.gonderen && (m.zaman - g.sonZaman <= 120000 || (blokYazisiz && m.temiz && m.zaman - g.sonZaman <= 360000));
+    if (!ayni) { g = { gonderen: m.gonderen, tarih: m.tarih, saat: m.saat, sonZaman: m.zaman, bloklar: [], iletildi: m.iletildi }; gonderiler.push(g); }
     g.sonZaman = m.zaman;
-    if (foto && !g.fotolar.includes(foto)) g.fotolar.push(foto);
-    if (m.temiz && !g.metin.includes(m.temiz)) g.metin += (g.metin ? "\n" : "") + m.temiz;
-  }
-  // Her gönderideki satırları ayrı işlere böl
-  const isler = []; let no = 0;
-  for (const go of gonderiler) {
-    let tesis = "", malzemeModu = false; const malzeme = [], kalemler = [];
-    for (let s of go.metin.split(/\n/)) {
-      s = s.replace(/\s+/g, " ").trim(); if (!s) continue;
-      if (/^kullan[ıi]lan malzeme/i.test(s)) { malzemeModu = true; continue; }
-      if (malzemeModu && /^\d+\s*(adet|metre|mt|m|kg|lt|paket|kutu)\b/i.test(s)) { malzeme.push(s.replace(/^(\d+)\s*adet\s*/i, "$1 adet ")); continue; }
-      malzemeModu = false;
-      const kod = /^((?:\d{4,5})(?:\s*[-–,\/&]\s*\d{4,5})*|kod\s*yok|kodsuz|kodyok)\s*[:.\-]?\s*(.*)$/i.exec(s);
-      const yalnizTesis = !kod && s.length <= 30 && tesisBul(s) && s.split(" ").length <= 4;
-      if (yalnizTesis) { tesis = tesisBul(s); continue; }
-      if (kod) kalemler.push({ tesis, kod: /^\d/.test(kod[1]) ? kod[1].replace(/\s+/g, "") : "", metin: kod[2] });
-      else if (/^bunlar kapat|^plantuma|iş kapat[ıi]labilir|^silebilirsiniz/i.test(s)) continue;
-      else kalemler.push({ tesis, kod: "", metin: s });
+    // İletilen (başka yerden gelen) fotoğraf gönderiye katılmaz; ustanın kendi mesajı gelince gönderi "iletildi" sayılmaz
+    if (ayni && !m.iletildi && g.iletildi) { g.iletildi = false; g.bloklar = g.bloklar.filter(b => !b.iletilen); }
+    let son = g.bloklar[g.bloklar.length - 1];
+    if (m.gorsel && m.temiz) {
+      // Aynı açıklama ikinci kez gelirse (WhatsApp albümde tekrar yazar) eski bloğa eklenir
+      const es = g.bloklar.find(b => b.metin === m.temiz);
+      if (es) { if (foto && !es.fotolar.includes(foto)) es.fotolar.push(foto); son = es; }
+      else g.bloklar.push({ fotolar: foto ? [foto] : [], metin: m.temiz, iletilen: m.iletildi, aciklamali: true });
+    } else if (m.gorsel) {
+      if (!son || (son.metin && !son.aciklamali && son.fotolar.length)) g.bloklar.push(son = { fotolar: [], metin: "", iletilen: m.iletildi });
+      if (foto && !son.fotolar.includes(foto)) son.fotolar.push(foto);
+    } else {
+      if (son && !son.metin.trim()) son.metin = m.temiz;                     // önce fotoğraflar, sonra yazı
+      else if (son && !son.aciklamali && !son.fotolar.length) { if (!son.metin.includes(m.temiz)) son.metin += "\n" + m.temiz; }
+      else if (!g.bloklar.some(b => b.metin.includes(m.temiz))) g.bloklar.push({ fotolar: [], metin: m.temiz, iletilen: m.iletildi });
     }
-    if (!kalemler.length) kalemler.push({ tesis, kod: "", metin: "" });
-    const n = kalemler.length, m = go.fotolar.length;
-    kalemler.forEach((k, i) => {
-      const fotolar = m ? (m >= n ? go.fotolar.slice(Math.floor(i * m / n), Math.floor((i + 1) * m / n)) : [go.fotolar[i % m]]) : [];
-      const tesisSon = k.tesis || tesisBul(k.metin) || tesisBul(go.metin) || "";
-      const kisa = k.metin.replace(/\b(yap[ıi]ld[ıi]|kapat[ıi]labilir|kapat[ıi]lacak|tamam)\b/gi, "").trim().length < 4;
-      isler.push({
-        id: ++no, tarih: go.tarih, saat: go.saat, gonderen: go.gonderen.replace(/^T\s+/, ""), kod: k.kod, tesis: tesisSon,
-        brans: bransBul(k.metin, go.gonderen), baslik: "", aciklama: cumleDuzelt(k.metin), malzeme: i === n - 1 ? malzeme.join(", ") : "",
-        fotolar, foto: 0, rapora: !go.iletildi && !kisa && !!k.metin && fotolar.length > 0, one: false, kaynak: k.metin
+  }
+  // Her bloğun satırlarını ayrı işlere böl
+  const isler = []; let no = 0;
+  const satirBol = metin => {
+    // Tek satıra yazılmış birden çok iş kodunu ("Haliç. 12360 … 12386 … 12419 …") ayrı satırlara böl;
+    // ilk koddan önceki kısa yazı tesis adıysa ayrı tesis satırı olur.
+    const satirlar = [];
+    for (let s of String(metin || "").split(/\n/)) {
+      s = s.replace(/\s+/g, " ").trim(); if (!s) continue;
+      const kodlar = s.match(/(^|\s)\d{5}(?=\s*[:.\-–]?\s)/g) || [];
+      if (kodlar.length >= 2 || (kodlar.length === 1 && !/^\d{5}/.test(s))) {
+        const parca = s.split(/\s(?=\d{5}\s*[:.\-–]?\s)/).map(x => x.trim()).filter(Boolean);
+        if (parca.length > 1 && !/^\d{5}/.test(parca[0])) {
+          const on = parca[0].replace(/[.:,\-–]+$/, "").trim();
+          if (on.length <= 30 && tesisBul(on) && on.split(" ").length <= 4) { satirlar.push(on); parca.shift(); }
+        }
+        parca.forEach(x => satirlar.push(x));
+      } else satirlar.push(s);
+    }
+    return satirlar;
+  };
+  for (const go of gonderiler) {
+    let tesis = "";
+    const tumMetin = go.bloklar.map(b => b.metin).join("\n");
+    for (const bl of go.bloklar) {
+      let malzemeModu = false; const malzeme = [], kalemler = [];
+      for (const s of satirBol(bl.metin)) {
+        if (/^kullan[ıi]lan malzeme/i.test(s)) { malzemeModu = true; continue; }
+        if (malzemeModu && /^\d+\s*(adet|metre|mt|m|kg|lt|paket|kutu)\b/i.test(s)) { malzeme.push(s.replace(/^(\d+)\s*adet\s*/i, "$1 adet ")); continue; }
+        malzemeModu = false;
+        const kod = /^((?:\d{4,5})(?:\s*[-–,\/&]\s*\d{4,5})*|kod\s*yok|kodsuz|kodyok)\s*[:.\-]?\s*(.*)$/i.exec(s);
+        const yalnizTesis = !kod && s.length <= 30 && tesisBul(s) && s.split(" ").length <= 4;
+        if (yalnizTesis) { tesis = tesisBul(s); continue; }
+        if (kod) kalemler.push({ tesis, kod: /^\d/.test(kod[1]) ? kod[1].replace(/\s+/g, "") : "", metin: kod[2] });
+        else if (/^bunlar kapat|^plantuma|iş kapat[ıi]labilir|^silebilirsiniz/i.test(s)) continue;
+        else kalemler.push({ tesis, kod: "", metin: s });
+      }
+      if (!kalemler.length) kalemler.push({ tesis, kod: "", metin: "" });
+      const n = kalemler.length, m = bl.fotolar.length;
+      kalemler.forEach((k, i) => {
+        // Blokta tek iş varsa fotoğraflar KESİN onundur. Birden çok iş varsa hepsine bloğun bütün fotoğrafları verilir,
+        // başlangıç fotoğrafı tahmindir ve kart "kontrol et" diye işaretlenir.
+        const bas = m ? (m >= n ? Math.floor(i * m / n) : i % m) : 0;
+        const tesisSon = k.tesis || tesisBul(k.metin) || tesisBul(tumMetin) || "";
+        const kisa = k.metin.replace(/\b(yap[ıi]ld[ıi]|kapat[ıi]labilir|kapat[ıi]lacak|tamam)\b/gi, "").trim().length < 4 ||
+          /yönlendiril(ecek|di)|düşelim|iptal edil|yapılmayacak/i.test(k.metin);   // yapılmamış/başkasına giden iş rapora girmesin
+        isler.push({
+          id: ++no, tarih: go.tarih, saat: go.saat, gonderen: go.gonderen.replace(/^T\s+/, ""), kod: k.kod, tesis: tesisSon,
+          brans: bransBul(k.metin, go.gonderen), baslik: "", aciklama: cumleDuzelt(k.metin), malzeme: i === n - 1 ? malzeme.join(", ") : "",
+          fotolar: bl.fotolar.slice(), foto: bas, fotoKesin: m > 0 && n === 1,
+          rapora: !go.iletildi && !bl.iletilen && !kisa && !!k.metin && m > 0, one: false, kaynak: k.metin
+        });
       });
-    });
+    }
   }
   return isler;
 }
-
 /* ---------------- ekranlar ---------------- */
 let sahaAcik = null, sahaFiltre = "rapora";
 SAYFALAR.saha = function () {
@@ -303,6 +347,16 @@ function whatsappPencere(r) {
         if (/\.zip$/i.test(f.name)) { durum("Fotoğraf zip'i açılıyor: " + f.name); await zipAc(f); }
         else if (/^WhatsApp Image .*\.jpe?g$/i.test(f.name)) resimler.push({ ad: f.name, al: async () => f });
       }
+      // Sohbette bu döneme ait mesaj yoksa: mesajların tarihlerini söyle, dönemi o haftaya çevirmeyi teklif et
+      const mesajlar = sohbetiOku(sohbet);
+      if (!mesajlar.length) throw new Error("Sohbet dosyasında okunabilen mesaj yok.");
+      if (!mesajlar.some(m => m.tarih >= r.bas && m.tarih <= r.bit)) {
+        const ilk = mesajlar[0].tarih, son = mesajlar[mesajlar.length - 1].tarih, yb = pazartesi(son);
+        if (!confirm("Sohbetteki mesajlar " + goster(ilk) + " – " + goster(son) + " tarihli, ama rapor dönemi " + goster(r.bas) + " – " + goster(r.bit) + ".\n\nRapor dönemini " + goster(yb) + " – " + goster(gunEkle(yb, 6)) + " yapıp devam edeyim mi?")) {
+          durum("Dönemde mesaj yok. Rapor dönemini değiştirip tekrar dene."); $("#waAl").disabled = false; return;
+        }
+        r.bas = yb; r.bit = gunEkle(yb, 6); r.tarih = gunEkle(yb, 7);
+      }
       // Sadece dönemdeki fotoğraflar klasöre yazılır
       const donemde = resimler.filter(x => { const m = /WhatsApp Image (\d{4}-\d{2}-\d{2})/i.exec(x.ad); return m && m[1] >= r.bas && m[1] <= r.bit; });
       const hedef = sahaRaporKlasoru(r) + "\\FOTOĞRAFLAR";
@@ -315,7 +369,7 @@ function whatsappPencere(r) {
         if (c.ok) fotolar.push(yol);
       }
       durum("Mesajlar işlere çevriliyor…");
-      r.isler = isleriCikar(sohbetiOku(sohbet), fotolar, r.bas, r.bit);
+      r.isler = isleriCikar(mesajlar, fotolar, r.bas, r.bit);
       await kaydet("saha"); pencereKapat(); sahaFiltre = "rapora";
       bildir(r.isler.length + " iş bulundu (" + fotolar.length + " fotoğraf), " + r.isler.filter(i => i.rapora).length + " tanesi rapora alındı. Kontrol edip düzelt.");
       raporDuzenle(r);
