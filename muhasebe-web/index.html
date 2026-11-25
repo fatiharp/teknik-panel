@@ -71,16 +71,16 @@
     let h;
     try { h = await window.showDirectoryPicker({ mode: "readwrite", id: "teknikpanel" }); }
     catch (e) { return; } // kullanıcı vazgeçti
-    if (!(await gecerliKok(h))) { hataEl.textContent = "Bu klasör TEKNİK PANEL değil (içinde 2-KAYITLAR yok). Lütfen TEKNİK PANEL klasörünü seç."; return; }
+    if (!(await gecerliKok(h))) { hataEl.textContent = "Bu klasör programın kayıt klasörü değil (içinde 2-KAYITLAR yok). Lütfen TEKNİK PANEL ya da ATÖLYE PANEL klasörünü seç."; return; }
     if (!(await izinVar(h, true))) { hataEl.textContent = "Klasöre yazma izni verilmedi."; return; }
     try { await handleKaydet(h); } catch (e) {}
     basla(h);
   }
 
   function ekranSec() {
-    goster('<p>Program kayıtların <b>TEKNİK PANEL</b> klasöründe. Başlamak için bir kez o klasörü göster.</p>' +
+    goster('<p>Program kayıtların <b>TEKNİK PANEL</b> (Atölye'de <b>ATÖLYE PANEL</b>) klasöründe. Başlamak için bir kez o klasörü göster.</p>' +
       '<p><small>Seçtiğin klasörü hatırlar, her açılışta tekrar sormaz. Verilerin bu bilgisayarda kalır, internete gitmez.</small></p>' +
-      '<button id="btnSec">📁 TEKNİK PANEL klasörünü seç</button>');
+      '<button id="btnSec">📁 Kayıt klasörünü seç</button>');
     document.getElementById("btnSec").onclick = klasorSec;
   }
   function ekranDevam(h) {
@@ -109,7 +109,7 @@
 
   // Yeni sürüm uyarısı: GitHub'a yeni sürüm yüklenince açık pencere eski kodla çalışmasın.
   // Her yüklemede surum.txt ile aşağıdaki SURUM aynı değere çıkarılır.
-  const SURUM = "2026-11-24a";
+  const SURUM = "2026-11-25a";
   async function tamTemizleYenile() {
     try { if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.unregister(); } } catch (e) {}
     try { if (window.caches) { const ks = await caches.keys(); for (const k of ks) await caches.delete(k); } } catch (e) {}

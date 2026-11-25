@@ -39,6 +39,16 @@ const $ = (s, k) => (k || document).querySelector(s);
 const $$ = (s, k) => Array.from((k || document).querySelectorAll(s));
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function iki(n) { return (n < 10 ? "0" : "") + n; }
+// Şeflik bilgileri (Ayarlar > Şeflik bilgileri). Ayarlarda şeflik adı yoksa Avrupa'nın bugünkü değerleri geçerli;
+// başka şeflik (ör. Atölyeler) kendi adını girdiyse boş bırakılan alanlar Avrupa'dan doldurulmaz, boş kalır.
+const SEF_VARSAYILAN = { sefAdi: "Avrupa Bakım Şefliği", sefFormAdi: "Avrupa Yakası Bakım Şefliği", izinAmiri: "Celal ARAL", isperBina: "FLORYA TEKNİK",
+  cirakBirim: "Florya Sosyal Tesisi", cirakDahili: "3400", cirakImza1Ad: "Ömer ÇALIŞAN", cirakImza1Unvan: "Tesis Amiri", cirakImza2Ad: "Yalçın ŞAHİN", cirakImza2Unvan: "İşletmeler Müdür Yardımcısı" };
+function sef(k) {
+  const a = V.ayarlar || {}, v = a[k];
+  if (v != null && String(v).trim() !== "") return String(v).trim();
+  return (a.sefAdi && String(a.sefAdi).trim()) ? (k === "sefFormAdi" ? String(a.sefAdi).trim() : "") : SEF_VARSAYILAN[k];
+}
+function sefBaslikYaz() { const s = document.querySelector("#yan .logo small"); if (s) s.textContent = "Personel İşleri · " + sef("sefAdi"); document.title = "Muhasebe – " + sef("sefAdi"); }
 function tarihNesne(s) { if (!s) return null; const p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
 function tarihMetin(d) { return d.getFullYear() + "-" + iki(d.getMonth() + 1) + "-" + iki(d.getDate()); }
 function goster(s) { const d = tarihNesne(s); return d ? iki(d.getDate()) + "." + iki(d.getMonth() + 1) + "." + d.getFullYear() : ""; }
@@ -656,7 +666,7 @@ function isperFormu(iz, p) {
     '<div class="arac"><button onclick="print()">🖨 Yazdır</button> <span style="color:#fff">Yazıcı penceresinde “PDF olarak kaydet” de seçebilirsin.</span></div>' +
     '<div class="sayfa">' +
     yaz(395, 347, p.ad, "font-size:2.6mm;max-width:32mm;overflow:hidden") + yaz(735, 347, p.tc) + yaz(1468, 347, p.sicil, "font-size:2.5mm") +
-    yaz(395, 381, p.bina || "FLORYA TEKNİK") + yaz(395, 412, [p.kadro, p.gorev].filter(Boolean).join(" / ")) +
+    yaz(395, 381, p.bina || sef("isperBina")) + yaz(395, 412, [p.kadro, p.gorev].filter(Boolean).join(" / ")) +
     yaz(395, 444, iz.adres || p.adres, "font-size:2.6mm;max-width:108mm;overflow:hidden") + yaz(418, 504, p.telefon) +
     yaz(388, 560, goster(iz.baslangic)) + yaz(1392, 560, sayi(iz.gun)) + yaz(388, 590, cmt) +
     isaret(k[0], k[1]) + (kutu[iz.tur] ? "" : yaz(1212, 694, iz.tur, "font-size:2.3mm")) +
@@ -710,9 +720,9 @@ function cirakFormu(iz, p) {
     '</div>' +
     '<div class="sayfa2">' +
     '<h3>MÜTALAA KÂĞIDI</h3>' +
-    '<div class="govde">Florya Sosyal Tesisi Çırak personelimizden ' + esc(d.TC) + ' T.C. Kimlik numaralı ' + esc(d.ADIN) + ' ' + esc(d.BAS) + ' tarihinden itibaren ' + esc(d.AIT) + esc(d.GUN) + ' gün ' + esc(d.TURE) + ' çıkması tarafımızca uygun görülmüştür.</div>' +
-    '<table class="bilgi" style="margin-top:20px">' + sat("Birimi", "Florya Sosyal Tesisi") + sat("Dahili Numarası", "3400") + sat("İletişim Bilgisi (Telefon)", d.TEL) + sat("İznini Geçireceği Yer", d.YER) + sat("Yerine Bakacak Personel", d.YERINE) + sat("İzinden Dönüş Tarihi", d.DONUS) + '</table>' +
-    '<div class="imzalar"><div><br><br><b>Ömer ÇALIŞAN</b>Tesis Amiri</div><div><br><br><b>Yalçın ŞAHİN</b>İşletmeler Müdür Yardımcısı</div></div>' +
+    '<div class="govde">' + esc(sef("cirakBirim")) + ' Çırak personelimizden ' + esc(d.TC) + ' T.C. Kimlik numaralı ' + esc(d.ADIN) + ' ' + esc(d.BAS) + ' tarihinden itibaren ' + esc(d.AIT) + esc(d.GUN) + ' gün ' + esc(d.TURE) + ' çıkması tarafımızca uygun görülmüştür.</div>' +
+    '<table class="bilgi" style="margin-top:20px">' + sat("Birimi", sef("cirakBirim")) + sat("Dahili Numarası", sef("cirakDahili")) + sat("İletişim Bilgisi (Telefon)", d.TEL) + sat("İznini Geçireceği Yer", d.YER) + sat("Yerine Bakacak Personel", d.YERINE) + sat("İzinden Dönüş Tarihi", d.DONUS) + '</table>' +
+    '<div class="imzalar"><div><br><br><b>' + esc(sef("cirakImza1Ad")) + '</b>' + esc(sef("cirakImza1Unvan")) + '</div><div><br><br><b>' + esc(sef("cirakImza2Ad")) + '</b>' + esc(sef("cirakImza2Unvan")) + '</div></div>' +
     '</div>' +
     '<scr' + 'ipt>setTimeout(function(){print()},500)</scr' + 'ipt></body></html>';
   const w = window.open("", "_blank", "width=900,height=1000");
@@ -726,7 +736,7 @@ async function bogaziciFormu(iz, p) {
   const bu = iz.tur === "YILLIK İZİN" ? iz.gun : 0;
   const toplam = b.dev + b.hak, kalan = toplam - once - bu;
   const gunAdi = s => s ? "(" + GUNLER[tarihNesne(s).getDay()] + ")" : "";
-  const imzaAdi = (V.ayarlar.izinAmiri && V.ayarlar.izinAmiri.trim()) || "Celal ARAL";
+  const imzaAdi = sef("izinAmiri");
   const isaret = FORM_ISARET[iz.tur] || "C21";
   const STIL = { D8: 353, K8: 445, D9: 348, D10: 348, D11: 348, D12: 348, D13: 348, D14: 379, D15: 376, L15: 449, D16: 365, C18: 102, C19: 104, C20: 104, C21: 106, H18: 104, H19: 104, H20: 104, H21: 108, H23: 473, D25: 307, D26: 322, F26: 322, I26: 46, L26: 480, D27: 301, F27: 302, D28: 303, F28: 305, C32: 486 };
   const deger = {
@@ -736,7 +746,7 @@ async function bogaziciFormu(iz, p) {
     H23: p.ad, D25: goster(p.iseGiris),
     D26: sayi(toplam), F26: sayi(bu), I26: sayi(once), L26: sayi(kalan),
     D27: goster(iz.baslangic), F27: gunAdi(iz.baslangic), D28: goster(iz.isBasi), F28: gunAdi(iz.isBasi),
-    C32: "Avrupa Yakası Bakım Şefliği\nBirim Sorumlusu\n" + imzaAdi
+    C32: sef("sefFormAdi") + "\nBirim Sorumlusu\n" + imzaAdi
   };
   deger[isaret] = "X";
   if (typeof JSZip === "undefined") { bildir("Excel aracı yüklenemedi (internet gerekebilir).", true); return; }
@@ -803,9 +813,15 @@ SAYFALAR.ayarlar = function () {
     '<div><label>1–5 yıl</label><input name="h0" type="number" value="' + h[0] + '"></div><div><label>6–14 yıl</label><input name="h1" type="number" value="' + h[1] + '"></div>' +
     '<div><label>15 yıl ve üstü</label><input name="h2" type="number" value="' + h[2] + '"></div>' +
     '<div><label>Cumartesi</label><select name="cmt"><option value="0">Tatil (izne sayılmaz)</option><option value="1"' + (a.cumartesiIsGunu ? " selected" : "") + ">İş günü (izne sayılır)</option></select></div>" +
-    '<div><label>İzin formunda imza atan amir (ad soyad)</label><input name="amir" value="' + esc(a.izinAmiri) + '"></div>' +
+    '<div><label>İzin formunda imza atan amir (ad soyad)</label><input name="amir" value="' + esc(a.izinAmiri) + '" placeholder="' + esc(sef("izinAmiri")) + '"></div>' +
     '<div><label>İzin formlarının kaydedileceği klasör (boş = her kişinin kendi İZİN klasörü)</label><input name="klasor" value="' + esc(a.izinKlasoru) + '" placeholder="' + esc(BILGI.personelKlasoru) + '\\<ŞİRKET>\\<AD>\\İZİN\\<yıl>"></div>' +
     '<div class="tam"><button class="ana" type="button" id="aKaydet">Kaydet</button></div></form></div>' +
+    '<div class="kutu"><h2>🏢 Şeflik bilgileri</h2><div class="not" style="margin-bottom:8px">Programın üst başlığında ve izin formlarında yazan bilgiler. Boş bırakılan kutuda gri yazan değer kullanılır.</div><form id="sf" class="form">' +
+    [["sefAdi", "Şeflik adı (sol üst başlık)"], ["sefFormAdi", "Boğaziçi izin formundaki birim adı"], ["isperBina", "İsper formunda boş bina yerine"],
+     ["cirakBirim", "Çırak formu: birimi"], ["cirakDahili", "Çırak formu: dahili numara"], ["cirakImza1Ad", "Çırak formu 1. imza: ad soyad"], ["cirakImza1Unvan", "Çırak formu 1. imza: unvan"],
+     ["cirakImza2Ad", "Çırak formu 2. imza: ad soyad"], ["cirakImza2Unvan", "Çırak formu 2. imza: unvan"]]
+      .map(([k, l]) => '<div><label>' + l + '</label><input name="' + k + '" value="' + esc(a[k]) + '" placeholder="' + esc(sef(k)) + '"></div>').join("") +
+    '<div class="tam"><button class="ana" type="button" id="sKaydet">Kaydet</button></div></form></div>' +
     '<div class="kutu"><div class="ust"><h2 style="flex:1;margin:0">Resmi tatiller</h2><select id="ty" style="width:auto"></select></div>' +
     '<div class="form" style="grid-template-columns:180px 1fr auto;align-items:end;margin-bottom:10px"><div><label>Tarih</label><input type="date" id="tt"></div><div><label>Adı</label><input id="ta" placeholder="ör. Kurban Bayramı 2. gün"></div><button id="tEkle">Ekle</button></div>' +
     '<div id="tListe"></div></div>' +
@@ -838,6 +854,12 @@ SAYFALAR.ayarlar = function () {
       izinAmiri: f.amir.value.trim(), izinKlasoru: f.klasor.value.trim()
     });
     if (await kaydet("ayarlar")) bildir("Ayarlar kaydedildi.");
+  };
+  $("#sKaydet").onclick = async () => {
+    const y = Object.assign({}, V.ayarlar);
+    Object.keys(SEF_VARSAYILAN).filter(k => k !== "izinAmiri").forEach(k => { const v = $("#sf")[k].value.trim(); if (v) y[k] = v; else delete y[k]; });
+    V.ayarlar = y;
+    if (await kaydet("ayarlar")) { sefBaslikYaz(); bildir("Şeflik bilgileri kaydedildi."); git(); }
   };
   $("#vAc").onclick = () => api("/api/ac", { yol: BILGI.veriKlasoru }).catch(e => bildir(e.message, true));
   const kilitDurumYaz = () => {
@@ -1363,6 +1385,7 @@ window.baslat = async function () {
     Object.assign(V, veri); BILGI = bilgi;
     if (!V.ayarlar || Array.isArray(V.ayarlar)) V.ayarlar = {};
     tatilYenile();
+    sefBaslikYaz();
     // Program her açılışta Mesai sayfasında başlasın (adres çubuğunda kalan eski iz önemsenmesin)
     try { history.replaceState(null, "", location.pathname + location.search + "#mesai"); } catch (e) { location.hash = "#mesai"; }
     if (V.ayarlar && V.ayarlar.kilit && !kilitAcikMi()) kilitEkrani(); else git();
