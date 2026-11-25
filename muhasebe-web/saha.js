@@ -235,8 +235,14 @@ SAYFALAR.saha = function () {
   $$("[data-r]").forEach(t => t.onclick = e => { if (e.target.closest("[data-rsil]")) return; sahaAcik = +t.dataset.r; SAYFALAR.saha(); });
   $$("[data-rsil]").forEach(b => b.onclick = async () => {
     const r = V.saha.find(x => x.id === +b.dataset.rsil);
-    if (!r || !confirm("No " + r.no + " raporu silinsin mi? (Kayıt silinir; klasördeki fotoğraflar yerinde kalır.)")) return;
-    V.saha = V.saha.filter(x => x !== r); if (await kaydet("saha")) { bildir("Rapor silindi."); SAYFALAR.saha(); }
+    if (!r) return;
+    const klasorler = sahaRaporKlasorleri(r);
+    if (!confirm("No " + r.no + " raporu silinsin mi?\n\nRapor kaydıyla birlikte klasörü de KALICI olarak silinir (fotoğraflar ve PDF):\n" + klasorler.join("\n") + "\n\nBu işlem geri alınamaz.")) return;
+    V.saha = V.saha.filter(x => x !== r);
+    if (!(await kaydet("saha"))) return;
+    let hata = 0;
+    for (const k of klasorler) { try { await sahaKlasorSil(k); } catch (e) { hata++; console.error(e); } }
+    bildir(hata ? "Rapor silindi ama klasörün bir kısmı silinemedi (" + hata + ")." : "Rapor ve klasörü silindi.", !!hata); SAYFALAR.saha();
   });
 };
 
@@ -259,6 +265,23 @@ function sahaKuralPencere() {
 }
 let sahaKayitZaman;
 function sahaKaydetSonra() { clearTimeout(sahaKayitZaman); sahaKayitZaman = setTimeout(() => kaydet("saha"), 700); }
+// Raporun diskteki klasör(ler)i: fotoğrafların bulunduğu klasör + PDF'in klasörü + şimdiki adla klasör (sadece 7-SAHA RAPORLARI altı)
+function sahaRaporKlasorleri(r) {
+  const s = new Set();
+  const ekle = y => { const k = String(y || "").replace(/\\FOTOĞRAFLAR\\[^\\]+$/i, "").replace(/\\[^\\]+\.pdf$/i, ""); if (k.indexOf(SAHA_KLASOR + "\\") === 0 && k.split("\\").length === 3) s.add(k); };
+  (r.isler || []).forEach(i => (i.fotolar || []).forEach(ekle));
+  if (r.pdf) ekle(r.pdf);
+  if (r.klasor) s.add(r.klasor);
+  s.add(sahaRaporKlasoru(r));
+  return Array.from(s);
+}
+async function sahaKlasorSil(k) {
+  const p = DK.parcala(k), ad = p.pop();
+  let ust; try { ust = await DK.dizin(p.join("\\"), false); } catch (e) { return; }   // üst klasör yoksa silinecek bir şey yok
+  try { await ust.removeEntry(ad, { recursive: true }); } catch (e) { if (e && e.name !== "NotFoundError") throw e; }
+  // Fotoğraf önbelleğinden de düş
+  for (const y of Array.from(sahaFotoUrl.keys())) if (y.indexOf(k + "\\") === 0) { try { URL.revokeObjectURL(sahaFotoUrl.get(y)); } catch (e) {} sahaFotoUrl.delete(y); }
+}
 function sahaKontrolEt(i) { return i.rapora && i.fotolar.length > 1 && !i.fotoKesin && !i.fotoSecildi; }
 function sahaRaporKlasoru(r) { return SAHA_KLASOR + "\\" + r.bas.slice(0, 4) + "\\" + iki(+r.no || 0) + " - " + goster(r.bas) + " - " + goster(r.bit); }
 function sayimlar(r) {
@@ -273,7 +296,7 @@ function raporDuzenle(r) {
   const kontrolSay = r.isler.filter(sahaKontrolEt).length;
   const filtreler = [["rapora", "Rapora girecekler"], ["kontrol", "⚠ Fotoğrafı kontrol et (" + kontrolSay + ")"], ["disarida", "Dışarıda kalanlar"], ["one", "⭐ Öne çıkanlar"], ["hepsi", "Hepsi"]];
   $("#icerik").innerHTML =
-    '<div class="ust"><button id="geri">← Raporlar</button><h1>Haftalık Saha Raporu — No ' + esc(r.no) + '</h1><button id="kural">📋 Ustalara yazma kuralı</button><button id="wa">📥 WhatsApp\'tan al</button><button class="ana" id="yazdir">🖨 Raporu oluştur</button></div>' +
+    '<div class="ust"><button id="geri">← Raporlar</button><h1>Haftalık Saha Raporu — No ' + esc(r.no) + '</h1><button id="kural">📋 Ustalara yazma kuralı</button><button id="wa">📥 WhatsApp\'tan al</button><button class="ana" id="yazdir" title="Raporu PDF olarak klasörüne kaydeder ve açar">📄 Raporu oluştur (PDF)</button></div>' +
     '<div class="kutu"><div class="form" style="grid-template-columns:repeat(4,1fr)">' + alan("no", "Rapor no", "number") + alan("tarih", "Rapor tarihi", "date") + alan("bas", "Dönem başı", "date") + alan("bit", "Dönem sonu", "date") +
     alan("hazirlayan", "Raporu hazırlayan") + alan("sef", "Sorumlu şef") + alan("gelenTalep", "Gelen talep sayısı (Minerva)", "number") + alan("yapilanIs", "Yapılan iş sayısı (boşsa kart sayısı)", "number") +
     '<div class="tam"><label>Hazırlayan birim</label><input data-ra="birim" value="' + esc(r.birim) + '"></div>' +
@@ -307,6 +330,9 @@ function kartlariCiz(r) {
           (i.fotolar.length > 1 ? '<div style="display:flex;gap:4px;margin-top:4px;overflow-x:auto">' + i.fotolar.map((y, n) => '<img data-sec="' + n + '" data-yol="' + esc(y) + '" title="Bu fotoğrafı seç" style="width:52px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;flex:none;background:#eee;' + (n === (i.foto || 0) ? "outline:3px solid #1F4E78;" : "opacity:.6;") + '">').join("") + "</div>" : "") +
           '<div class="not" style="text-align:center;font-weight:600;color:' + (i.fotoKesin || i.fotoSecildi ? "#2E7D32" : "#B26A00") + '">' + (i.fotoKesin ? "✔ Fotoğraf kesin (ustanın yazısıyla aynı mesajda)" : i.fotoSecildi ? "✔ Fotoğrafı sen seçtin" : i.fotolar.length > 1 ? "⚠ Tahmin — doğru fotoğrafı alttan seç" : "⚠ Bu fotoğraf aynı mesajdaki başka işe de ait olabilir") + "</div>"
           : '<div class="bos" style="height:120px;background:#f3f3f3;border-radius:6px">Fotoğraf yok</div>') +
+        '<div style="display:flex;gap:6px;justify-content:center;margin-top:4px;flex-wrap:wrap">' +
+        '<label class="kucuk" style="cursor:pointer;border:1px solid #1F4E78;color:#1F4E78;border-radius:6px;padding:3px 8px;font-size:12px">📎 Bilgisayardan fotoğraf ekle<input type="file" data-ekle accept="image/*" multiple hidden></label>' +
+        (foto ? '<button class="kucuk" data-cikar title="Seçili fotoğraf bu karttan çıkar (dosya klasörde kalır)">✕ Seçili fotoğrafı çıkar</button>' : "") + "</div>" +
         '<div class="form" style="grid-template-columns:1fr 1fr;gap:6px 8px;margin-top:6px">' +
         '<div><label>Tarih</label><input type="date" data-k="tarih" value="' + esc(i.tarih) + '"></div>' +
         '<div><label>Branş</label><select data-k="brans">' + secenek.map(b => "<option" + (b === i.brans ? " selected" : "") + ">" + esc(b) + "</option>").join("") + "</select></div>" +
@@ -326,6 +352,29 @@ function kartlariCiz(r) {
     });
     const f = $("[data-foto]", k); if (f) f.onclick = () => { if (i.fotolar.length > 1) { i.foto = ((i.foto || 0) + 1) % i.fotolar.length; i.fotoSecildi = true; sahaKaydetSonra(); raporDuzenle(r); } };
     $$("[data-sec]", k).forEach(x => x.onclick = () => { i.foto = +x.dataset.sec; i.fotoSecildi = true; sahaKaydetSonra(); raporDuzenle(r); });
+    // Dışarıdan fotoğraf: raporun FOTOĞRAFLAR klasörüne "EK - <iş kodu> - ad" olarak kaydedilir, karta eklenip seçilir
+    $("[data-ekle]", k).onchange = async e => {
+      const dosyalar = Array.from(e.target.files || []).filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic)$/i.test(f.name));
+      if (!dosyalar.length) return;
+      const hedef = sahaRaporKlasoru(r) + "\\FOTOĞRAFLAR\\";
+      try {
+        await DK.dizin(hedef, true);
+        let ilk = -1;
+        for (const f of dosyalar) {
+          const c = await DK.dosyaYazResp(hedef + dosyaAdi("EK - " + (i.kod || ("iş " + i.id)) + " - " + f.name), f);
+          const j = await c.json(); if (!c.ok || j.hata) throw new Error(j.hata || "yazılamadı");
+          i.fotolar.push(j.dosya); if (ilk < 0) ilk = i.fotolar.length - 1;
+        }
+        i.foto = ilk; i.fotoSecildi = true; if (i.aciklama) i.rapora = true;
+        await kaydet("saha"); bildir(dosyalar.length + " fotoğraf eklendi ve seçildi."); raporDuzenle(r);
+      } catch (x) { bildir("Fotoğraf eklenemedi: " + x.message, true); }
+    };
+    const cik = $("[data-cikar]", k);
+    if (cik) cik.onclick = () => {
+      i.fotolar.splice(i.foto || 0, 1); i.foto = 0; i.fotoKesin = false; i.fotoSecildi = i.fotolar.length === 1;
+      if (!i.fotolar.length) i.rapora = false;
+      sahaKaydetSonra(); raporDuzenle(r);
+    };
     $("[data-one]", k).onclick = () => {
       if (!i.one && r.isler.filter(x => x.one).length >= 6) { bildir("En fazla 6 öne çıkan iş seçilebilir.", true); return; }
       i.one = !i.one; if (i.one) { i.rapora = true; if (!i.baslik) i.baslik = i.aciklama.split(/[.;,]/)[0].slice(0, 45); }
@@ -381,7 +430,8 @@ function whatsappPencere(r) {
       }
       // Sadece dönemdeki fotoğraflar klasöre yazılır
       const donemde = resimler.filter(x => { const m = /WhatsApp Image (\d{4}-\d{2}-\d{2})/i.exec(x.ad); return m && m[1] >= r.bas && m[1] <= r.bit; });
-      const hedef = sahaRaporKlasoru(r) + "\\FOTOĞRAFLAR";
+      r.klasor = sahaRaporKlasoru(r);
+      const hedef = r.klasor + "\\FOTOĞRAFLAR";
       await DK.dizin(hedef, true);
       const fotolar = [];
       for (let n = 0; n < donemde.length; n++) {
@@ -404,21 +454,25 @@ async function raporYazdir(r) {
   // Pencere hemen açılır (tarayıcı engellemesin), fotoğraflar hazırlanınca içi doldurulur
   const w = window.open("", "_blank", "width=1200,height=900");
   if (!w) { bildir("Rapor penceresi açılamadı. Tarayıcının açılır pencere engelini kaldır.", true); return; }
-  w.document.write('<p style="font:16px Arial;padding:20px">Rapor hazırlanıyor, fotoğraflar yükleniyor…</p>');
+  w.document.write('<p style="font:16px Arial;padding:20px">Rapor hazırlanıyor, PDF oluşturuluyor… (birkaç saniye sürebilir)</p>');
   const isler = r.isler.filter(i => i.rapora).sort((a, b) => (a.tarih + a.saat < b.tarih + b.saat ? -1 : 1));
   const one = r.isler.filter(i => i.one).slice(0, 6), s = sayimlar(r), bl = Object.keys(s), top = bl.reduce((t, b) => t + s[b], 0);
   const gerekli = new Set();
   one.forEach(i => i.fotolar.slice(i.foto || 0).concat(i.fotolar.slice(0, i.foto || 0)).slice(0, 2).forEach(y => gerekli.add(y)));
   isler.forEach(i => { const f = i.fotolar[i.foto || 0]; if (f) gerekli.add(f); });
-  const url = {}; for (const y of gerekli) url[y] = await sahaFotoAl(y);
+  // Fotoğraflar ve logolar küçültülüp sayfaya gömülür (PDF çizimi için şart)
+  const url = {}; for (const y of gerekli) url[y] = await sahaGomuluFoto(y);
+  const logoVeri = {}; for (const l of ["logo_sosyal_tesisler.jpg", "logo_ibb.png"]) logoVeri[l] = await sahaGomuluLogo(l);
   const img = (y, st) => url[y] ? '<img src="' + url[y] + '"' + (st ? ' style="' + st + '"' : "") + ">" : '<div class="yok"></div>';
   const tr = d => { const p = (d || "").split("-"); return p.length === 3 ? p[2] + " / " + p[1] + " / " + p[0] : ""; };
-  const logo = ad => new URL("formlar/" + ad, location.href).href;
+  const logo = ad => logoVeri[ad] || new URL("formlar/" + ad, location.href).href;
   const ust = '<div class="ust"><img src="' + logo("logo_sosyal_tesisler.jpg") + '"><div class="ortabaslik"><div class="b1">İSTANBUL BÜYÜKŞEHİR BELEDİYESİ</div><div class="b2">İŞLETMELER MÜDÜRLÜĞÜ &nbsp;|&nbsp; ' + esc(trBuyuk(r.birim || sef("sefAdi"))) + '</div><div class="b3">HAFTALIK SAHA RAPORU</div></div><img src="' + logo("logo_ibb.png") + '" style="height:24mm"></div>';
   const alt = '<div class="alt">İstanbul Büyükşehir Belediyesi &nbsp;•&nbsp; İşletmeler Müdürlüğü &nbsp;•&nbsp; ' + esc(r.birim || sef("sefAdi")) + "</div>";
   const sayfa = ic => '<section class="sayfa">' + ust + '<div class="govde">' + ic + "</div>" + alt + "</section>";
   const bolum = b => '<div class="bolum">' + b + "</div>";
-  let html = sayfa(
+  const sayfalar = []; let html = "";
+  const sayfaEkle = ic => { const h = sayfa(ic); sayfalar.push(h); html += h; };
+  sayfaEkle(
     '<table class="bilgi"><tr><th>Rapor No</th><td>' + esc(r.no) + "</td><th>Rapor Tarihi</th><td>" + tr(r.tarih) + "</td></tr>" +
     "<tr><th>Rapor Dönemi</th><td>" + tr(r.bas) + " &nbsp;–&nbsp; " + tr(r.bit) + "</td><th>Hazırlayan Birim</th><td>" + esc(r.birim) + "</td></tr>" +
     "<tr><th>Raporu Hazırlayan</th><td>" + esc(r.hazirlayan) + "</td><th>Sorumlu Şef</th><td>" + esc(r.sef) + "</td></tr>" +
@@ -427,13 +481,13 @@ async function raporYazdir(r) {
     bolum("HAFTALIK YAPILAN İŞ ADET DAĞILIMI") + '<table class="dagilim"><tr>' + bl.map(b => '<th style="border-bottom:4px solid ' + bransRenk(b) + '">' + esc(b) + "</th>").join("") + "<th>Toplam</th></tr><tr>" +
     bl.map(b => '<td style="color:' + bransRenk(b) + '">' + s[b] + "</td>").join("") + '<td style="color:#222">' + top + "</td></tr></table>" +
     bolum("AÇIKLAMA") + "<p>" + esc(r.aciklama) + "</p>" + bolum("NOTLAR :") + "<p>" + esc(r.notlar) + "</p>");
-  if (one.length) html += sayfa('<div class="onebaslik">BU HAFTANIN ÖNE ÇIKAN İŞLERİ</div><div class="onegrid">' + one.map(i => {
+  if (one.length) sayfaEkle('<div class="onebaslik">BU HAFTANIN ÖNE ÇIKAN İŞLERİ</div><div class="onegrid">' + one.map(i => {
     const f = i.fotolar.slice(i.foto || 0).concat(i.fotolar.slice(0, i.foto || 0)).slice(0, 2);
     return '<div class="one"><div class="ot"><b>' + esc(i.tesis) + "</b> &nbsp;" + goster(i.tarih) + '</div><div class="obas">' + esc(i.baslik || "") + '</div><div class="ofoto">' +
       f.map(y => img(y)).join("") + '</div><div class="oac">' + esc(i.aciklama) + "</div></div>";
   }).join("") + "</div>");
   for (let n = 0; n < isler.length; n += 6) {
-    html += sayfa('<div class="kartgrid">' + isler.slice(n, n + 6).map((i, k) => {
+    sayfaEkle('<div class="kartgrid">' + isler.slice(n, n + 6).map((i, k) => {
       const f = i.fotolar[i.foto || 0];
       return '<div class="kart"><div class="kb" style="border-bottom-color:' + bransRenk(i.brans) + '"><span>' + (n + k + 1) + " &nbsp; TARİH : " + goster(i.tarih) + '</span><span class="br">BRANŞ : &nbsp;' + esc(trBuyuk(i.brans)) + "</span></div>" +
         '<div class="kg">' + (f ? img(f) : '<div class="yok"></div>') + '<div class="ky"><div class="kt">TESİS ADI : ' + esc(i.tesis) + '</div><div class="ka">AÇIKLAMA :</div><div>' + esc(i.aciklama) + "</div>" +
@@ -457,8 +511,81 @@ async function raporYazdir(r) {
     ".arac{position:sticky;top:0;text-align:center;padding:8px;background:#333;color:#fff;font:14px Arial;z-index:2}.arac button{font:15px Arial;padding:7px 16px;cursor:pointer}" +
     "@media print{body{background:#fff}.sayfa{margin:0}.arac{display:none}}";
   const ad = "HAFTALIK_SAHA_RAPORU_" + goster(r.bas).replace(/\./g, "_") + "_-_" + goster(r.bit).replace(/\./g, "_");
+  // PDF: her sayfa resme çizilir, PDF dosyasına konur, raporun klasörüne kaydedilir ve pencerede açılır
+  try {
+    const pdf = await sahaPdfUret(sayfalar, css, (n, top) => { try { w.document.body.innerHTML = '<p style="font:16px Arial;padding:20px">PDF oluşturuluyor… sayfa ' + n + ' / ' + top + '</p>'; } catch (e) {} });
+    const klasor = r.klasor || sahaRaporKlasoru(r);
+    const yol = klasor + "\\HAFTALIK SAHA RAPORU No " + (+r.no || 0) + " - " + goster(r.bas) + " - " + goster(r.bit) + ".pdf";
+    await DK.dizin(klasor, true);
+    const c = await DK.dosyaYazResp(yol, pdf, true); const j = await c.json();
+    if (!c.ok || j.hata) throw new Error(j.hata || "PDF kaydedilemedi");
+    if (r.pdf && r.pdf !== j.dosya) { try { await DK.dosyaSil(r.pdf); } catch (e) {} }
+    r.pdf = j.dosya; await kaydet("saha");
+    bildir("PDF kaydedildi: " + j.dosya);
+    w.location.href = URL.createObjectURL(pdf);
+    return;
+  } catch (e) { console.error(e); bildir("PDF otomatik oluşturulamadı (" + e.message + "). Açılan pencereden Yazdır → PDF olarak kaydet ile alabilirsin.", true); }
   w.document.open();
   w.document.write('<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>' + ad + "</title><style>" + css + '</style></head><body><div class="arac"><button onclick="print()">🖨 Yazdır / PDF olarak kaydet</button> &nbsp; ' +
     isler.length + " iş kartı, " + Math.ceil(isler.length / 6 + 1 + (one.length ? 1 : 0)) + " sayfa. Yazıcı olarak “PDF olarak kaydet”i seçersen PDF dosyası olur.</div>" + html + "</body></html>");
   w.document.close();
+}
+
+/* ---------------- otomatik PDF (kütüphanesiz) ----------------
+   Her rapor sayfası SVG <foreignObject> içinde resme çizilir (Chrome bunu destekler), JPEG olarak
+   çok basit bir PDF dosyasına (sayfa başına bir resim, A4 yatay) konur. Fotoğraflar önceden küçültülüp gömülür. */
+async function sahaResimKucult(blob, enBuyuk, kalite) {
+  const bm = await createImageBitmap(blob);
+  const o = Math.min(1, enBuyuk / Math.max(bm.width, bm.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(bm.width * o); cv.height = Math.round(bm.height * o);
+  const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, cv.width, cv.height); c.drawImage(bm, 0, 0, cv.width, cv.height);
+  try { bm.close(); } catch (e) {}
+  return cv.toDataURL(kalite ? "image/jpeg" : "image/png", kalite || undefined);
+}
+async function sahaGomuluFoto(yol) {
+  try { const t = await DK.dosyaTutamac(yol, false); return await sahaResimKucult(await t.tutamac.getFile(), 1100, 0.82); }
+  catch (e) { return ""; }
+}
+async function sahaGomuluLogo(ad) {
+  try { const b = await (await fetch("formlar/" + ad)).blob(); return await sahaResimKucult(b, 400, /\.png$/i.test(ad) ? 0 : 0.9); }
+  catch (e) { return ""; }
+}
+async function sahaPdfUret(sayfalar, css, ilerleme) {
+  const G = 1123, Y = 794, OLCEK = 1.8;   // A4 yatay, 96 dpi piksel; çizim 1,8 kat (yaklaşık 170 dpi)
+  const kap = document.createElement("div");
+  const resimler = [];
+  for (let n = 0; n < sayfalar.length; n++) {
+    if (ilerleme) ilerleme(n + 1, sayfalar.length);
+    kap.innerHTML = '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + G + "px;height:" + Y + 'px;background:#fff;font-family:Segoe UI,Calibri,Arial,sans-serif;color:#222"><style>' + css + "body{background:#fff}.sayfa{margin:0!important}</style>" + sayfalar[n] + "</div>";
+    const xhtml = new XMLSerializer().serializeToString(kap.firstChild);
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + G + '" height="' + Y + '"><foreignObject x="0" y="0" width="100%" height="100%">' + xhtml + "</foreignObject></svg>";
+    const img = new Image();
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    await img.decode();
+    const cv = document.createElement("canvas"); cv.width = Math.round(G * OLCEK); cv.height = Math.round(Y * OLCEK);
+    const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, cv.width, cv.height); c.drawImage(img, 0, 0, cv.width, cv.height);
+    const jb = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.85));
+    resimler.push({ bayt: new Uint8Array(await jb.arrayBuffer()), g: cv.width, y: cv.height });
+  }
+  return sahaPdfYaz(resimler);
+}
+function sahaPdfYaz(resimler) {
+  const enc = new TextEncoder(), parcalar = [], ofs = []; let uz = 0;
+  const yaz = x => { const b = typeof x === "string" ? enc.encode(x) : x; parcalar.push(b); uz += b.length; };
+  const nesne = (no, govde) => { ofs[no] = uz; yaz(no + " 0 obj\n"); govde(); yaz("\nendobj\n"); };
+  const n = resimler.length, W = 841.89, H = 595.28;
+  yaz("%PDF-1.4\n");
+  nesne(1, () => yaz("<< /Type /Catalog /Pages 2 0 R >>"));
+  nesne(2, () => yaz("<< /Type /Pages /Count " + n + " /Kids [" + resimler.map((_, i) => (3 + 3 * i) + " 0 R").join(" ") + "] >>"));
+  resimler.forEach((r, i) => {
+    const p = 3 + 3 * i, icerik = "q " + W + " 0 0 " + H + " 0 0 cm /Im" + i + " Do Q";
+    nesne(p, () => yaz("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources << /XObject << /Im" + i + " " + (p + 1) + " 0 R >> >> /Contents " + (p + 2) + " 0 R >>"));
+    nesne(p + 1, () => { yaz("<< /Type /XObject /Subtype /Image /Width " + r.g + " /Height " + r.y + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + r.bayt.length + " >>\nstream\n"); yaz(r.bayt); yaz("\nendstream"); });
+    nesne(p + 2, () => yaz("<< /Length " + icerik.length + " >>\nstream\n" + icerik + "\nendstream"));
+  });
+  const xref = uz, top = 3 + 3 * n;
+  let x = "xref\n0 " + top + "\n0000000000 65535 f \n";
+  for (let k = 1; k < top; k++) x += String(ofs[k]).padStart(10, "0") + " 00000 n \n";
+  yaz(x + "trailer\n<< /Size " + top + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
+  return new Blob(parcalar, { type: "application/pdf" });
 }
