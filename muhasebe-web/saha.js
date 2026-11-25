@@ -240,8 +240,26 @@ SAYFALAR.saha = function () {
   });
 };
 
+const SAHA_KURAL = "📸 SAHA RAPORU İÇİN MESAJ KURALI\n\n" +
+  "1) Her iş için fotoğrafı seç.\n" +
+  "2) Fotoğrafın ALTINA (açıklama kısmına) iş kodunu ve yapılanı yaz, sonra gönder.\n" +
+  "   Örnek: 12360 Haliç tezgah altı dolap fan motoru değiştirildi\n" +
+  "3) Bir işin birden çok fotoğrafı varsa hepsini birlikte seç, yazıyı sadece bir kez yaz.\n" +
+  "4) Birden çok iş yaptıysan HER İŞİ AYRI gönder (ayrı fotoğraf + ayrı yazı). Birkaç işi tek mesaja yazma.\n" +
+  "5) Kodu olmayan işte kod yerine KOD YOK yaz.\n" +
+  "6) Kullanılan malzemeyi aynı yazının altına \"Kullanılan malzeme:\" diye ekle.\n\n" +
+  "Böyle gönderilen her fotoğraf rapora kendi işiyle otomatik ve doğru eşleşir.";
+function sahaKuralPencere() {
+  pencereAc("<h2>📋 Ustalara yazma kuralı</h2><div class=\"not\">Bunu WhatsApp grubuna bir kez at. Ustalar böyle yazarsa fotoğraflar işlerle <b>kesin</b> eşleşir, senin düzeltmene gerek kalmaz.</div>" +
+    "<textarea id=\"kuralMetin\" rows=\"13\" style=\"width:100%;margin-top:8px\">" + esc(SAHA_KURAL) + "</textarea>" +
+    "<div class=\"pencere-alt\"><button id=\"kKapat\">Kapat</button><button id=\"kKopya\">📋 Kopyala</button><button class=\"ana\" id=\"kWa\">WhatsApp ile aç</button></div>");
+  $("#kKapat").onclick = pencereKapat;
+  $("#kKopya").onclick = () => panoyaKopyala($("#kuralMetin").value, $("#kKopya"));
+  $("#kWa").onclick = () => window.open("https://wa.me/?text=" + encodeURIComponent($("#kuralMetin").value), "_blank");
+}
 let sahaKayitZaman;
 function sahaKaydetSonra() { clearTimeout(sahaKayitZaman); sahaKayitZaman = setTimeout(() => kaydet("saha"), 700); }
+function sahaKontrolEt(i) { return i.rapora && i.fotolar.length > 1 && !i.fotoKesin && !i.fotoSecildi; }
 function sahaRaporKlasoru(r) { return SAHA_KLASOR + "\\" + r.bas.slice(0, 4) + "\\" + iki(+r.no || 0) + " - " + goster(r.bas) + " - " + goster(r.bit); }
 function sayimlar(r) {
   const s = {}; sahaBranslar().forEach(b => s[b] = 0);
@@ -252,9 +270,10 @@ function sayimlar(r) {
 function raporDuzenle(r) {
   const s = sayimlar(r), bl = Object.keys(s), top = bl.reduce((t, b) => t + s[b], 0), oneSay = r.isler.filter(i => i.one).length;
   const alan = (ad, etiket, tip) => '<div><label>' + etiket + '</label><input data-ra="' + ad + '" type="' + (tip || "text") + '" value="' + esc(r[ad]) + '"></div>';
-  const filtreler = [["rapora", "Rapora girecekler"], ["disarida", "Dışarıda kalanlar"], ["one", "⭐ Öne çıkanlar"], ["hepsi", "Hepsi"]];
+  const kontrolSay = r.isler.filter(sahaKontrolEt).length;
+  const filtreler = [["rapora", "Rapora girecekler"], ["kontrol", "⚠ Fotoğrafı kontrol et (" + kontrolSay + ")"], ["disarida", "Dışarıda kalanlar"], ["one", "⭐ Öne çıkanlar"], ["hepsi", "Hepsi"]];
   $("#icerik").innerHTML =
-    '<div class="ust"><button id="geri">← Raporlar</button><h1>Haftalık Saha Raporu — No ' + esc(r.no) + '</h1><button id="wa">📥 WhatsApp\'tan al</button><button class="ana" id="yazdir">🖨 Raporu oluştur</button></div>' +
+    '<div class="ust"><button id="geri">← Raporlar</button><h1>Haftalık Saha Raporu — No ' + esc(r.no) + '</h1><button id="kural">📋 Ustalara yazma kuralı</button><button id="wa">📥 WhatsApp\'tan al</button><button class="ana" id="yazdir">🖨 Raporu oluştur</button></div>' +
     '<div class="kutu"><div class="form" style="grid-template-columns:repeat(4,1fr)">' + alan("no", "Rapor no", "number") + alan("tarih", "Rapor tarihi", "date") + alan("bas", "Dönem başı", "date") + alan("bit", "Dönem sonu", "date") +
     alan("hazirlayan", "Raporu hazırlayan") + alan("sef", "Sorumlu şef") + alan("gelenTalep", "Gelen talep sayısı (Minerva)", "number") + alan("yapilanIs", "Yapılan iş sayısı (boşsa kart sayısı)", "number") +
     '<div class="tam"><label>Hazırlayan birim</label><input data-ra="birim" value="' + esc(r.birim) + '"></div>' +
@@ -267,12 +286,13 @@ function raporDuzenle(r) {
   $$("[data-ra]").forEach(i => i.onchange = () => { r[i.dataset.ra] = i.type === "number" ? (i.value === "" ? "" : +i.value) : i.value; sahaKaydetSonra(); });
   $$("[data-f]").forEach(b => b.onclick = () => { sahaFiltre = b.dataset.f; raporDuzenle(r); });
   $("#wa").onclick = () => whatsappPencere(r);
+  $("#kural").onclick = sahaKuralPencere;
   $("#yazdir").onclick = () => raporYazdir(r);
   kartlariCiz(r);
 }
 
 function kartlariCiz(r) {
-  const l = r.isler.filter(i => sahaFiltre === "hepsi" || (sahaFiltre === "rapora" && i.rapora) || (sahaFiltre === "disarida" && !i.rapora) || (sahaFiltre === "one" && i.one));
+  const l = r.isler.filter(i => sahaFiltre === "hepsi" || (sahaFiltre === "kontrol" && sahaKontrolEt(i)) || (sahaFiltre === "rapora" && i.rapora) || (sahaFiltre === "disarida" && !i.rapora) || (sahaFiltre === "one" && i.one));
   const tesisSecenek = Array.from(new Set(sahaTesisListesi().map(t => t[0]))).map(t => '<option value="' + esc(t) + '">').join("");
   const bl = sahaBranslar();
   $("#kartlar").innerHTML = (l.length ? "" : '<div class="bos">Bu listede kart yok.' + (r.isler.length ? "" : " Önce <b>📥 WhatsApp'tan al</b> düğmesine bas.") + "</div>") +
@@ -284,7 +304,8 @@ function kartlariCiz(r) {
         '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><label style="display:flex;gap:5px;align-items:center;font-weight:600"><input type="checkbox" data-k="rapora"' + (i.rapora ? " checked" : "") + "> Rapora al</label>" +
         '<button class="kucuk" data-one title="Öne çıkan işler sayfasına koy">' + (i.one ? "⭐ Öne çıkan" : "☆ Öne çıkar") + '</button><span class="not" style="margin-left:auto">' + esc(i.gonderen) + " · " + goster(i.tarih) + " " + esc(i.saat.slice(0, 5).replace(".", ":")) + "</span></div>" +
         (foto ? '<img data-foto data-yol="' + esc(foto) + '" style="width:100%;height:210px;object-fit:cover;border-radius:6px;cursor:pointer;background:#eee" title="Tıkla: sonraki fotoğraf">' +
-          '<div class="not" style="text-align:center">' + ((i.foto || 0) + 1) + " / " + i.fotolar.length + " fotoğraf" + (i.fotolar.length > 1 ? " · tıkla, değiştir" : "") + "</div>"
+          (i.fotolar.length > 1 ? '<div style="display:flex;gap:4px;margin-top:4px;overflow-x:auto">' + i.fotolar.map((y, n) => '<img data-sec="' + n + '" data-yol="' + esc(y) + '" title="Bu fotoğrafı seç" style="width:52px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;flex:none;background:#eee;' + (n === (i.foto || 0) ? "outline:3px solid #1F4E78;" : "opacity:.6;") + '">').join("") + "</div>" : "") +
+          '<div class="not" style="text-align:center;font-weight:600;color:' + (i.fotoKesin || i.fotoSecildi ? "#2E7D32" : "#B26A00") + '">' + (i.fotoKesin ? "✔ Fotoğraf kesin (ustanın yazısıyla aynı mesajda)" : i.fotoSecildi ? "✔ Fotoğrafı sen seçtin" : i.fotolar.length > 1 ? "⚠ Tahmin — doğru fotoğrafı alttan seç" : "⚠ Bu fotoğraf aynı mesajdaki başka işe de ait olabilir") + "</div>"
           : '<div class="bos" style="height:120px;background:#f3f3f3;border-radius:6px">Fotoğraf yok</div>') +
         '<div class="form" style="grid-template-columns:1fr 1fr;gap:6px 8px;margin-top:6px">' +
         '<div><label>Tarih</label><input type="date" data-k="tarih" value="' + esc(i.tarih) + '"></div>' +
@@ -303,7 +324,8 @@ function kartlariCiz(r) {
       i[a.dataset.k] = a.type === "checkbox" ? a.checked : a.value; sahaKaydetSonra();
       if (a.type === "checkbox" || a.dataset.k === "brans") raporDuzenle(r);
     });
-    const f = $("[data-foto]", k); if (f) f.onclick = () => { if (i.fotolar.length > 1) { i.foto = ((i.foto || 0) + 1) % i.fotolar.length; sahaKaydetSonra(); kartlariCiz(r); } };
+    const f = $("[data-foto]", k); if (f) f.onclick = () => { if (i.fotolar.length > 1) { i.foto = ((i.foto || 0) + 1) % i.fotolar.length; i.fotoSecildi = true; sahaKaydetSonra(); raporDuzenle(r); } };
+    $$("[data-sec]", k).forEach(x => x.onclick = () => { i.foto = +x.dataset.sec; i.fotoSecildi = true; sahaKaydetSonra(); raporDuzenle(r); });
     $("[data-one]", k).onclick = () => {
       if (!i.one && r.isler.filter(x => x.one).length >= 6) { bildir("En fazla 6 öne çıkan iş seçilebilir.", true); return; }
       i.one = !i.one; if (i.one) { i.rapora = true; if (!i.baslik) i.baslik = i.aciklama.split(/[.;,]/)[0].slice(0, 45); }
