@@ -29,6 +29,7 @@
     <a href="#tesisler" data-sayfa="tesisler">🏢 Tesisler</a>
     <a href="#saha" data-sayfa="saha" id="menuSaha" hidden>📸 Saha Raporu</a>
     <a href="#zimmet" data-sayfa="zimmet">📦 Zimmet</a>
+    <a href="#ihale" data-sayfa="ihale">📑 İhale / Talep</a>
     <a href="#ayarlar" data-sayfa="ayarlar">⚙ Ayarlar</a>
   </nav>
   <div id="durum"></div>
@@ -46,6 +47,7 @@
 </div>
 
 <script src="jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="veri_katmani.js"></script>
 <script src="uygulama.js"></script>
 <script src="saha.js"></script>
@@ -111,7 +113,7 @@
 
   // Yeni sürüm uyarısı: GitHub'a yeni sürüm yüklenince açık pencere eski kodla çalışmasın.
   // Her yüklemede surum.txt ile aşağıdaki SURUM aynı değere çıkarılır.
-  const SURUM = "2026-11-25h";
+  const SURUM = "2026-11-26a";
   async function tamTemizleYenile() {
     try { if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.unregister(); } } catch (e) {}
     try { if (window.caches) { const ks = await caches.keys(); for (const k of ks) await caches.delete(k); } } catch (e) {}

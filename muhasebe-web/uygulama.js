@@ -1383,6 +1383,146 @@ SAYFALAR.rehber = yakinda("Rehber", "Binaların dahili numaraları ve önemli te
 SAYFALAR.ustyazi = yakinda("Üst Yazılar", "Konu ve muhatap seçilerek resmi biçimde üst yazı (Word) hazırlanacak; gönderilen yazılar listelenecek.");
 SAYFALAR.saha = yakinda("Haftalık Saha Raporu", "Haftanın işleri girilecek, rapor senin şablonunla Word olarak hazırlanacak.");
 
+/* ---------------- İhale / Talep (3 şeflik ortak — Supabase bulut) ---------------- */
+const SB_URL = "https://zhxtojsjvmwozyggdscw.supabase.co";
+const SB_KEY = "sb_publishable_dfouaK3GykJsWHGxOBWKyQ_tPcPfe5b";
+let SB = null;
+function sbClient() { if (!SB) { if (!window.supabase) return null; SB = window.supabase.createClient(SB_URL, SB_KEY); } return SB; }
+const SEFLIKLER = ["Avrupa Yakası Bakım Şefliği", "Anadolu Yakası Bakım Şefliği", "Atölyeler Şefliği"];
+function seflikAdi() { return (V.ayarlar && V.ayarlar.seflik) || SEFLIKLER[0]; }
+let ihaleStok = [], ihaleArama = "", ihaleKategori = "", talepSepet = [], talepTesis = "", talepBrans = "";
+
+async function ihaleStokYukle() {
+  const sb = sbClient(); if (!sb) throw new Error("Supabase yüklenemedi (internet gerekli).");
+  const hepsi = []; let bas = 0; const sayfa = 1000;
+  while (true) {
+    const { data, error } = await sb.from("stok").select("urun_kodu,ad,birim,kategori,ihale_miktari,kalan").order("ad").range(bas, bas + sayfa - 1);
+    if (error) throw new Error(error.message);
+    hepsi.push(...(data || []));
+    if (!data || data.length < sayfa) break;
+    bas += sayfa;
+  }
+  ihaleStok = hepsi;
+}
+SAYFALAR.ihale = function () {
+  $("#icerik").innerHTML =
+    '<div class="ust"><h1>İhale / Talep</h1>' +
+    '<span class="dpill" style="background:#e8f0fb;color:#1F4E78;border-color:#cfe0f5">' + esc(seflikAdi()) + '</span>' +
+    '<button id="iSeflik">Şeflik seç</button> <button id="iYenile">🔄 Yenile</button> <button id="iGecmis">📜 Talep geçmişi</button></div>' +
+    '<div class="not" style="margin-top:-6px;margin-bottom:10px">Ortak ihale stoğu — 3 şeflik aynı listeyi görür. Talep oluşturunca <b>kalan</b> düşer ve talep formu Excel olarak iner. <b>İnternet gerekir.</b></div>' +
+    '<div id="iDurum" class="kutu">Stok yükleniyor…</div>' +
+    '<div id="iGovde" hidden>' +
+      '<div id="iSepet"></div>' +
+      '<div class="ust" style="margin:4px 0 8px"><input class="ara" id="iAra" placeholder="Ara: ürün kodu, malzeme…" value="' + esc(ihaleArama) + '"><select id="iKat" style="max-width:240px"></select><span class="not" id="iSay"></span></div>' +
+      '<div class="kutu" style="padding:8px;overflow:auto;max-height:52vh"><table class="ptablo" style="width:100%"><thead><tr>' +
+      '<th style="width:88px">Kod</th><th>Malzeme</th><th style="width:64px">Birim</th><th style="width:60px">Kalan</th><th style="width:150px"></th></tr></thead><tbody id="iTablo"></tbody></table></div>' +
+    '</div>';
+  $("#iSeflik").onclick = seflikSec;
+  $("#iYenile").onclick = () => SAYFALAR.ihale();
+  $("#iGecmis").onclick = talepGecmis;
+  (async () => {
+    try {
+      await ihaleStokYukle();
+      $("#iDurum").hidden = true; $("#iGovde").hidden = false;
+      const kats = [...new Set(ihaleStok.map(s => s.kategori))].sort();
+      $("#iKat").innerHTML = '<option value="">Tüm kategoriler</option>' + kats.map(k => '<option' + (ihaleKategori === k ? ' selected' : '') + '>' + esc(k) + '</option>').join("");
+      $("#iAra").oninput = e => { ihaleArama = e.target.value; ihaleTabloCiz(); };
+      $("#iKat").onchange = e => { ihaleKategori = e.target.value; ihaleTabloCiz(); };
+      ihaleTabloCiz(); sepetCiz();
+    } catch (e) { $("#iDurum").innerHTML = '<span class="eksi">Stok yüklenemedi: ' + esc(e.message) + '</span> <button id="iTekrar">Tekrar dene</button>'; const t = $("#iTekrar"); if (t) t.onclick = () => SAYFALAR.ihale(); }
+  })();
+};
+function ihaleTabloCiz() {
+  const a = trKucuk(ihaleArama);
+  const l = ihaleStok.filter(s => (!ihaleKategori || s.kategori === ihaleKategori) && (!a || trKucuk(s.ad + " " + s.urun_kodu).includes(a)));
+  if ($("#iSay")) $("#iSay").textContent = l.length + " / " + ihaleStok.length + " kalem";
+  $("#iTablo").innerHTML = l.slice(0, 400).map(s => {
+    const sep = talepSepet.find(x => x.urun_kodu === s.urun_kodu), az = s.kalan <= 0;
+    return '<tr><td class="not">' + esc(s.urun_kodu) + '</td><td>' + esc(s.ad) + '</td><td class="not">' + esc(s.birim || "") + '</td>' +
+      '<td style="font-weight:700;color:' + (az ? "#c0392b" : s.kalan <= 5 ? "#b7791f" : "#1e7b34") + '">' + s.kalan + '</td>' +
+      '<td class="sag">' + (sep ? '<span class="not">sepette ' + sep.miktar + '</span> <button class="kucuk tehlike" data-cik="' + esc(s.urun_kodu) + '">çıkar</button>' :
+        (az ? '<span class="not">stok yok</span>' : '<button class="kucuk ana" data-ekle="' + esc(s.urun_kodu) + '">+ sepete</button>')) + '</td></tr>';
+  }).join("") + (l.length > 400 ? '<tr><td colspan="5" class="not">… ilk 400 gösterildi, aramayı daralt</td></tr>' : (l.length ? "" : '<tr><td colspan="5" class="not">Sonuç yok.</td></tr>'));
+  $$("#iTablo [data-ekle]").forEach(b => b.onclick = () => { const s = ihaleStok.find(x => x.urun_kodu === b.dataset.ekle); if (s) { talepSepet.push({ urun_kodu: s.urun_kodu, ad: s.ad, birim: s.birim, kalan: s.kalan, miktar: 1, aciklama: "" }); ihaleTabloCiz(); sepetCiz(); } });
+  $$("#iTablo [data-cik]").forEach(b => b.onclick = () => { talepSepet = talepSepet.filter(x => x.urun_kodu !== b.dataset.cik); ihaleTabloCiz(); sepetCiz(); });
+}
+function sepetCiz() {
+  const el = $("#iSepet"); if (!el) return;
+  if (!talepSepet.length) { el.innerHTML = ""; return; }
+  el.innerHTML = '<div class="kutu" style="background:#f7fbf8;border-color:#cfe8d6"><div class="ust" style="margin-bottom:8px"><h2 style="margin:0;font-size:16px">🧾 Talep sepeti (' + talepSepet.length + ')</h2>' +
+    '<input id="tTesis" placeholder="Tesis (ör. FLORYA)" style="max-width:180px" value="' + esc(talepTesis) + '"><input id="tBrans" placeholder="Branş (ör. HIRDAVAT)" style="max-width:180px" value="' + esc(talepBrans) + '">' +
+    '<button class="ana" id="tOlustur">✓ Talep oluştur + Excel</button> <button id="tTemizle">Temizle</button></div>' +
+    '<table class="ptablo" style="width:100%"><thead><tr><th>Malzeme</th><th style="width:90px">Miktar</th><th style="width:60px">Birim</th><th>Açıklama</th><th style="width:40px"></th></tr></thead><tbody>' +
+    talepSepet.map((it, i) => '<tr><td>' + esc(it.ad) + ' <span class="not">(' + esc(it.urun_kodu) + ', kalan ' + it.kalan + ')</span></td>' +
+      '<td><input type="number" min="1" max="' + it.kalan + '" value="' + it.miktar + '" data-mik="' + i + '" style="width:72px"></td>' +
+      '<td class="not">' + esc(it.birim || "") + '</td><td><input data-ack="' + i + '" value="' + esc(it.aciklama) + '" placeholder="(isteğe bağlı)"></td>' +
+      '<td class="sag"><button class="kucuk tehlike" data-sepsil="' + i + '">🗑</button></td></tr>').join("") +
+    '</tbody></table></div>';
+  $("#tTesis").oninput = e => talepTesis = e.target.value;
+  $("#tBrans").oninput = e => talepBrans = e.target.value;
+  $$("#iSepet [data-mik]").forEach(inp => inp.onchange = e => { const it = talepSepet[+inp.dataset.mik]; it.miktar = Math.max(1, Math.min(it.kalan || 999999, +e.target.value || 1)); e.target.value = it.miktar; });
+  $$("#iSepet [data-ack]").forEach(inp => inp.oninput = e => talepSepet[+inp.dataset.ack].aciklama = e.target.value);
+  $$("#iSepet [data-sepsil]").forEach(b => b.onclick = () => { talepSepet.splice(+b.dataset.sepsil, 1); ihaleTabloCiz(); sepetCiz(); });
+  $("#tTemizle").onclick = () => { talepSepet = []; ihaleTabloCiz(); sepetCiz(); };
+  $("#tOlustur").onclick = talepOlustur;
+}
+async function talepOlustur() {
+  const sepet = talepSepet.filter(x => +x.miktar > 0);
+  if (!sepet.length) { bildir("Sepet boş.", true); return; }
+  for (const it of sepet) { if (+it.miktar > it.kalan) { bildir(it.ad + ": kalan " + it.kalan + ", " + it.miktar + " istenemez.", true); return; } }
+  if (!confirm(sepet.length + " kalem için talep oluşturulacak; ortak stoktan düşecek (geri alınmaz). Devam?")) return;
+  const kalemler = sepet.map(it => ({ urun_kodu: it.urun_kodu, ad: it.ad, birim: it.birim || "", miktar: +it.miktar, aciklama: it.aciklama || "", brans: talepBrans, tesis: talepTesis }));
+  try {
+    bildir("Talep gönderiliyor…");
+    const sb = sbClient();
+    const { data, error } = await sb.rpc("talep_olustur", { p_seflik: seflikAdi(), p_birim_adi: "İşletmeler Müdürlüğü - " + seflikAdi(), p_olusturan: seflikAdi(), p_kalemler: kalemler });
+    if (error) throw new Error(error.message);
+    await talepExcel({ id: data, tarih: bugun(), seflik: seflikAdi(), kalemler });
+    talepSepet = [];
+    await ihaleStokYukle(); ihaleTabloCiz(); sepetCiz();
+    bildir("Talep #" + data + " oluşturuldu, stok düştü, Excel indi.");
+  } catch (e) { bildir("Talep oluşturulamadı: " + e.message, true); }
+}
+async function talepExcel(t) {
+  const r = [];
+  r.push([{ v: "T.C", s: 1 }]);
+  r.push([{ v: "İSTANBUL BÜYÜKŞEHİR BELEDİYE BAŞKANLIĞI", s: 1 }]);
+  r.push([{ v: "Destek Hizmetleri Dairesi Başkanlığı İşletmeler Şube Müdürlüğü" }]);
+  r.push([]);
+  r.push([{ v: "BİRİM ADI : İşletmeler Müdürlüğü - " + t.seflik, s: 1 }]);
+  r.push([{ v: "TALEP TARİHİ : " + goster(t.tarih), s: 1 }]);
+  r.push([]);
+  r.push([{ v: "S.N", s: 2 }, { v: "ÜRÜN KODU", s: 2 }, { v: "MALZEMENİN CİNSİ", s: 2 }, { v: "MİKTAR", s: 2 }, { v: "BİRİM", s: 2 }, { v: "AÇIKLAMA", s: 2 }, { v: "BRANŞ", s: 2 }, { v: "TESİS", s: 2 }]);
+  t.kalemler.forEach((k, i) => r.push([{ v: i + 1, s: 3, sayi: true }, { v: k.urun_kodu, s: 3 }, { v: k.ad, s: 3 }, { v: k.miktar, s: 3, sayi: true }, { v: k.birim || "", s: 3 }, { v: k.aciklama || "", s: 3 }, { v: k.brans || "", s: 3 }, { v: k.tesis || "", s: 3 }]));
+  const blob = await xlsxBlob("Talep", r);
+  const dad = dosyaAdi("TALEP " + zimmetTarihDosya(t.tarih) + " " + t.seflik + " No" + t.id) + ".xlsx";
+  try { if (!DK.demo && DK.handle) await DK.dosyaYazResp("11-TALEP\\" + dad, blob, true); } catch (e) {}
+  const url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = dad; a.style.display = "none"; document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
+}
+async function talepGecmis() {
+  try {
+    const sb = sbClient(); if (!sb) throw new Error("Supabase yok");
+    const { data, error } = await sb.from("talep").select("*").order("created_at", { ascending: false }).limit(50);
+    if (error) throw new Error(error.message);
+    const l = data || [];
+    pencereAc('<h2>📜 Son talepler (' + l.length + ')</h2>' + (l.length ? '<div style="max-height:60vh;overflow:auto">' + l.map(t => {
+      const kal = (t.kalemler || []), adet = kal.reduce((s, k) => s + (+k.miktar || 0), 0);
+      return '<div class="kutu" style="margin-bottom:8px"><div class="ust" style="margin:0 0 6px"><b>No ' + t.id + '</b> · ' + esc(t.seflik || "") + ' · ' + esc(goster(t.tarih)) + ' <span class="not">(' + kal.length + ' kalem, ' + adet + ' adet)</span> <button class="kucuk" data-tx="' + t.id + '">Excel indir</button></div>' +
+        '<div class="not">' + kal.map(k => esc(k.ad) + " ×" + k.miktar).join(", ") + '</div></div>';
+    }).join("") + '</div>' : '<div class="not">Henüz talep yok.</div>') + '<div class="pencere-alt"><button id="tgKapat">Kapat</button></div>');
+    $("#tgKapat").onclick = pencereKapat;
+    $$("#pencereKutu [data-tx]").forEach(b => b.onclick = () => { const t = l.find(x => x.id == b.dataset.tx); if (t) talepExcel({ id: t.id, tarih: t.tarih, seflik: t.seflik, kalemler: t.kalemler || [] }); });
+  } catch (e) { bildir("Geçmiş alınamadı: " + e.message, true); }
+}
+function seflikSec() {
+  pencereAc('<h2>Bu bilgisayar hangi şeflik?</h2><div class="not" style="margin-bottom:10px">Talep bu şeflik adına oluşturulur. Bir kez seç, kayıtlı kalır.</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px">' + SEFLIKLER.map(s => '<button class="' + (seflikAdi() === s ? "ana" : "") + '" data-sf="' + esc(s) + '">' + esc(s) + '</button>').join("") + '</div>' +
+    '<div class="pencere-alt"><button id="sfKapat">Kapat</button></div>');
+  $("#sfKapat").onclick = pencereKapat;
+  $$("#pencereKutu [data-sf]").forEach(b => b.onclick = async () => { V.ayarlar = V.ayarlar || {}; V.ayarlar.seflik = b.dataset.sf; await kaydet("ayarlar"); pencereKapat(); bildir("Şeflik: " + b.dataset.sf); SAYFALAR.ihale(); });
+}
+
 /* ---------------- başlat ---------------- */
 window.baslat = async function () {
   try {
