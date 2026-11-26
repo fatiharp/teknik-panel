@@ -1506,14 +1506,48 @@ async function talepGecmis() {
     const { data, error } = await sb.from("talep").select("*").order("created_at", { ascending: false }).limit(50);
     if (error) throw new Error(error.message);
     const l = data || [];
-    pencereAc('<h2>📜 Son talepler (' + l.length + ')</h2>' + (l.length ? '<div style="max-height:60vh;overflow:auto">' + l.map(t => {
+    pencereAc('<h2>📜 Son talepler (' + l.length + ')</h2><div class="not" style="margin-bottom:8px">Sil → malzemeler stoğa GERİ eklenir. Düzelt → miktarları değiştir, stok farkı kendiliğinden ayarlanır.</div>' + (l.length ? '<div style="max-height:58vh;overflow:auto">' + l.map(t => {
       const kal = (t.kalemler || []), adet = kal.reduce((s, k) => s + (+k.miktar || 0), 0);
-      return '<div class="kutu" style="margin-bottom:8px"><div class="ust" style="margin:0 0 6px"><b>No ' + t.id + '</b> · ' + esc(t.seflik || "") + ' · ' + esc(goster(t.tarih)) + ' <span class="not">(' + kal.length + ' kalem, ' + adet + ' adet)</span> <button class="kucuk" data-tx="' + t.id + '">Excel indir</button></div>' +
+      return '<div class="kutu" style="margin-bottom:8px"><div class="ust" style="margin:0 0 6px"><b>No ' + t.id + '</b> · ' + esc(t.seflik || "") + ' · ' + esc(goster(t.tarih)) + ' <span class="not">(' + kal.length + ' kalem, ' + adet + ' adet)</span>' +
+        '<span style="margin-left:auto"></span><button class="kucuk" data-tx="' + t.id + '">📄 Excel</button> <button class="kucuk" data-tduz="' + t.id + '">✏ Düzelt</button> <button class="kucuk tehlike" data-tsil="' + t.id + '">🗑 Sil</button></div>' +
         '<div class="not">' + kal.map(k => esc(k.ad) + " ×" + k.miktar).join(", ") + '</div></div>';
     }).join("") + '</div>' : '<div class="not">Henüz talep yok.</div>') + '<div class="pencere-alt"><button id="tgKapat">Kapat</button></div>');
     $("#tgKapat").onclick = pencereKapat;
     $$("#pencereKutu [data-tx]").forEach(b => b.onclick = () => { const t = l.find(x => x.id == b.dataset.tx); if (t) talepExcel({ id: t.id, tarih: t.tarih, seflik: t.seflik, kalemler: t.kalemler || [] }); });
+    $$("#pencereKutu [data-tsil]").forEach(b => b.onclick = () => talepSil(+b.dataset.tsil));
+    $$("#pencereKutu [data-tduz]").forEach(b => b.onclick = () => { const t = l.find(x => x.id == b.dataset.tduz); if (t) talepDuzeltPencere(t); });
   } catch (e) { bildir("Geçmiş alınamadı: " + e.message, true); }
+}
+async function talepSil(id) {
+  if (!confirm("Talep No " + id + " silinsin mi?\n\nİçindeki malzemeler ortak stoğa GERİ eklenecek.")) return;
+  try {
+    const sb = sbClient(); const { error } = await sb.rpc("talep_sil", { p_id: id });
+    if (error) throw new Error(error.message);
+    bildir("Talep #" + id + " silindi, stok geri eklendi.");
+    try { await ihaleStokYukle(); if ($("#iTablo")) ihaleTabloCiz(); } catch (e) {}
+    talepGecmis();
+  } catch (e) { bildir("Silinemedi: " + e.message, true); }
+}
+function talepDuzeltPencere(t) {
+  const kal = (t.kalemler || []).map(k => ({ ...k }));
+  pencereAc('<h2>✏ Talep No ' + t.id + ' düzelt</h2><div class="not" style="margin-bottom:8px">Miktarı değiştir ya da satırı 0 yap/çıkar. Kaydedince stok farkı ayarlanır (örn. 5→3 ise 2 adet stoğa döner).</div>' +
+    '<div style="max-height:50vh;overflow:auto"><table class="ptablo" style="width:100%"><thead><tr><th>Malzeme</th><th style="width:90px">Miktar</th><th style="width:40px"></th></tr></thead><tbody id="tdTablo">' +
+    kal.map((k, i) => '<tr data-r="' + i + '"><td>' + esc(k.ad) + ' <span class="not">(' + esc(k.urun_kodu) + ')</span></td><td><input type="number" min="0" value="' + (+k.miktar || 0) + '" data-dm="' + i + '" style="width:72px"></td><td class="sag"><button class="kucuk tehlike" data-dsil="' + i + '">🗑</button></td></tr>').join("") +
+    '</tbody></table></div><div class="pencere-alt"><button class="ana" id="tdKaydet">Kaydet</button> <button id="tdKapat">Vazgeç</button></div>');
+  $("#tdKapat").onclick = pencereKapat;
+  $$("#pencereKutu [data-dm]").forEach(inp => inp.onchange = e => { kal[+inp.dataset.dm].miktar = Math.max(0, +e.target.value || 0); });
+  $$("#pencereKutu [data-dsil]").forEach(b => b.onclick = () => { kal[+b.dataset.dsil].miktar = 0; b.closest("tr").style.opacity = .4; const inp = b.closest("tr").querySelector("[data-dm]"); if (inp) inp.value = 0; });
+  $("#tdKaydet").onclick = async () => {
+    const yeni = kal.filter(k => +k.miktar > 0).map(k => ({ urun_kodu: k.urun_kodu, ad: k.ad, birim: k.birim || "", miktar: +k.miktar, aciklama: k.aciklama || "", brans: k.brans || "", tesis: k.tesis || "" }));
+    if (!yeni.length) { if (!confirm("Tüm kalemler 0 — bu talep silinecek (stok geri eklenecek). Devam?")) return; pencereKapat(); return talepSil(t.id); }
+    try {
+      const sb = sbClient(); const { error } = await sb.rpc("talep_guncelle", { p_id: t.id, p_kalemler: yeni });
+      if (error) throw new Error(error.message);
+      bildir("Talep #" + t.id + " güncellendi, stok farkı ayarlandı.");
+      try { await ihaleStokYukle(); if ($("#iTablo")) ihaleTabloCiz(); } catch (e) {}
+      talepGecmis();
+    } catch (e) { bildir("Güncellenemedi: " + e.message, true); }
+  };
 }
 function seflikSec() {
   pencereAc('<h2>Bu bilgisayar hangi şeflik?</h2><div class="not" style="margin-bottom:10px">Talep bu şeflik adına oluşturulur. Bir kez seç, kayıtlı kalır.</div>' +
